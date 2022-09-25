@@ -1,4 +1,4 @@
-use crate::{GCTable, LexState, LuaState, MemoryReference, BytecodePosition, BytecodeRegister, BytecodeLine, BytecodeInstructionLine};
+use crate::{GCTable, LexState, LuaState, BytecodePosition, BytecodeRegister, BytecodeLine, BytecodeInstructionLine};
 
 pub struct FuncScope {
     prev: &'static FuncScope,
