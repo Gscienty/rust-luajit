@@ -1,10 +1,8 @@
-mod object;
-mod lexer;
-mod util;
+#[allow(dead_code)]
 
-pub use object::*;
-pub use lexer::*;
-pub use util::*;
+mod lex;
+mod types;
+mod parser;
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right
