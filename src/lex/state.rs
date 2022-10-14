@@ -1,17 +1,20 @@
 use std::ops::{AddAssign, ShlAssign, MulAssign};
 
-use crate::types::Value;
+use crate::{types::Value, bytecode::ByteInstruction};
 
-use super::{source::LuaSource, token::Token};
+use super::{source::LuaSource, token::Token, VarInfo, ByteCodeInstructionLine};
 
 pub(crate) struct LexState<'s> {
     source: LuaSource<'s>,
     token_builder: Vec<char>,
     pub(crate) line_number: u32,
-    last_line: u32,
+    pub(crate) last_line: u32,
 
     pub(crate) token: Token,
     pub(crate) lookahead_token: Token,
+
+    pub(crate) var_stack: Vec<VarInfo>,
+    pub(crate) instructions: Vec<ByteCodeInstructionLine>,
 }
 
 mod format {
@@ -238,6 +241,9 @@ impl<'s> LexState<'s> {
 
             token: Token::EOF,
             lookahead_token: Token::EOF,
+
+            var_stack: Vec::new(),
+            instructions: Vec::new(),
         }
     }
 
@@ -704,6 +710,30 @@ impl<'s> LexState<'s> {
         } else {
             false
         }
+    }
+
+    pub(crate) fn get_ins(&self, index: usize) -> Option<ByteInstruction> {
+        self.instructions
+            .get(index)
+            .and_then(|ins| Some(ins.instruction))
+    }
+
+    pub(crate) fn get_ins_mut(&mut self, index: usize) -> Option<&mut ByteInstruction> {
+        self.instructions
+            .get_mut(index)
+            .and_then(|ins| Some(&mut ins.instruction))
+    }
+
+    pub(crate) fn get_insline(&self, index: usize) -> Option<u32> {
+        self.instructions
+            .get(index)
+            .and_then(|ins| Some(ins.line))
+    }
+
+    pub(crate) fn get_insline_mut(&mut self, index: usize) -> Option<&mut u32> {
+        self.instructions
+            .get_mut(index)
+            .and_then(|ins| Some(&mut ins.line))
     }
 }
 

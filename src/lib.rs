@@ -3,6 +3,7 @@
 mod lex;
 mod types;
 mod parser;
+mod bytecode;
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right
