@@ -1,9 +1,11 @@
-#[allow(dead_code)]
+#![allow(dead_code)]
 
-mod lex;
-mod types;
+mod utils;
+
+mod code;
+mod lexer;
+mod object;
 mod parser;
-mod bytecode;
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right
