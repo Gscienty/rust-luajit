@@ -282,7 +282,7 @@ impl Lexer {
                 }
 
                 // identifier or reversed word
-                while matches!(self.current, Some(chr) if chr.is_alphanumeric()) {
+                while matches!(self.current, Some(chr) if chr.is_alphanumeric() || chr == '_') {
                     self.save_next();
                 }
                 return self.identifier();
@@ -635,6 +635,7 @@ impl Lexer {
             "true" => Token::True,
             "false" => Token::False,
             "in" => Token::In,
+            "then" => Token::Then,
             _ => Token::Name(self.token_buffer.clone()),
         };
 

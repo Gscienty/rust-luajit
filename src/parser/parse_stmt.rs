@@ -53,20 +53,24 @@ impl<'s, 't> ParseStmt<'s, 't> {
 
     // test_then_block ::= [ `if` | `elseif` ] cond_exp `then` block_stmt
     pub(super) fn test_then_block(&mut self, _escape: &mut usize) -> Result<(), ParseErr> {
+        log::debug!("parse test_then_block_stmt");
+
         // parse `if` | `elseif`
         self.p.parse_lex().skip();
         // parse cond_exp
         let mut cond_expr = ExprDesc::new();
-        self.p.parse_expr(self.fs, &mut cond_expr).expr()?;
+        self.p.parse_expr(self.fs, &mut cond_expr).expr_exp()?;
         // parse `then`
         match_token!(consume: self.p, Token::Then)?;
         // parse block_stmt
-        self.stmtlist()?;
+        self.block_stmt()?;
 
         Ok(())
     }
 
     pub(super) fn block_stmt(&mut self) -> Result<(), ParseErr> {
+        log::debug!("parse block_stmt");
+
         self.stmtlist()?;
 
         Ok(())
@@ -77,6 +81,8 @@ impl<'s, 't> ParseStmt<'s, 't> {
     //              [ `else` block_stmt ]
     //              `end`
     pub(super) fn if_stmt(&mut self) -> Result<(), ParseErr> {
+        log::debug!("parse if_stmt");
+
         let mut escape_list = codelimit::NO_JMP;
 
         // parse `if` cond_exp `then` block_stmt
@@ -97,10 +103,15 @@ impl<'s, 't> ParseStmt<'s, 't> {
 
     // while_stmt ::= `while` cond_exp `do` block_stmt `end`
     pub(super) fn while_stmt(&mut self) -> Result<(), ParseErr> {
+        log::debug!("parse where_stmt");
+
         // parse `while`
         self.p.parse_lex().skip();
         // parse cond_exp
-        let _condexit = self.p.parse_expr(self.fs, &mut ExprDesc::new()).cond()?;
+        let _condexit = self
+            .p
+            .parse_expr(self.fs, &mut ExprDesc::new())
+            .cond_exp()?;
         // parse `do`
         match_token!(consume: self.p, Token::Do)?;
         // parse block_stmt
@@ -118,6 +129,8 @@ impl<'s, 't> ParseStmt<'s, 't> {
         _nvars: u32,
         _isgen: bool,
     ) -> Result<(), ParseErr> {
+        log::debug!("parse forbody_stmt");
+
         // parse `do`
         match_token!(consume: self.p, Token::Do)?;
         // parse block_stmt
@@ -128,17 +141,25 @@ impl<'s, 't> ParseStmt<'s, 't> {
 
     // fornum_stmt ::=  name `=` exp `,` exp [`,` exp] forbody_stmt
     pub(super) fn fornum_stmt(&mut self, _varname: &str) -> Result<(), ParseErr> {
+        log::debug!("parse fornum_stmt");
+
         // parse `=`
         match_token!(consume: self.p, Token::Operator('='))?;
         // parse exp (initial value)
-        self.p.parse_expr(self.fs, &mut ExprDesc::new()).exp1()?;
+        self.p
+            .parse_expr(self.fs, &mut ExprDesc::new())
+            .expr_exp()?;
         // parse `,`
         match_token!(consume: self.p, Token::Operator(','))?;
         // parse exp (end value)
-        self.p.parse_expr(self.fs, &mut ExprDesc::new()).exp1()?;
+        self.p
+            .parse_expr(self.fs, &mut ExprDesc::new())
+            .expr_exp()?;
         // parse [ `,` exp ] (step value)
         if match_token!(test_consume: self.p, Token::Operator(',')) {
-            self.p.parse_expr(self.fs, &mut ExprDesc::new()).exp1()?;
+            self.p
+                .parse_expr(self.fs, &mut ExprDesc::new())
+                .expr_exp()?;
         }
         // parse forbody_stmt
         self.forbody_stmt(0, 1, false)?;
@@ -148,6 +169,8 @@ impl<'s, 't> ParseStmt<'s, 't> {
 
     // forlist_stmt ::= name { `,` name } `in` explist_exp forbody_stmt
     pub(super) fn forlist_stmt(&mut self, _indexname: &str) -> Result<(), ParseErr> {
+        log::debug!("parse forlist_stmt");
+
         // parse { `,` name }
         while match_token!(test_consume: self.p, Token::Operator(',')) {
             let _name = self.p.parse_lex().name()?;
@@ -158,7 +181,7 @@ impl<'s, 't> ParseStmt<'s, 't> {
         let _ne = self
             .p
             .parse_expr(self.fs, &mut ExprDesc::new())
-            .exprlist()?;
+            .exprlist_exp()?;
         // parse forbody_stmt
         self.forbody_stmt(0, 0, true)?;
 
@@ -167,6 +190,8 @@ impl<'s, 't> ParseStmt<'s, 't> {
 
     // for_stmt ::= `for` (fornum_stmt | forlist_stmt) `end`
     pub(super) fn for_stmt(&mut self) -> Result<(), ParseErr> {
+        log::debug!("parse for_stmt");
+
         // parse `for`
         self.p.parse_lex().skip();
         // parse name
@@ -185,6 +210,8 @@ impl<'s, 't> ParseStmt<'s, 't> {
 
     // do_stmt ::= `do` block_stmt `end`
     pub(super) fn do_stmt(&mut self) -> Result<(), ParseErr> {
+        log::debug!("parse do_stmt");
+
         // parse `do`
         self.p.parse_lex().skip();
         // parse block_stmt
@@ -197,20 +224,27 @@ impl<'s, 't> ParseStmt<'s, 't> {
 
     // repeat_stmt ::= `repeat` block_stmt `until` cond_exp
     pub(super) fn repeat_stmt(&mut self) -> Result<(), ParseErr> {
+        log::debug!("parse repeat_stmt");
+
         // parse `repeat`
         self.p.parse_lex().skip();
         // parse block_stmt
-        self.stmtlist()?;
+        self.block_stmt()?;
         // parse `until`
         match_token!(consume: self.p, Token::Until)?;
         // parse cond_exp
-        let mut _condexit = self.p.parse_expr(self.fs, &mut ExprDesc::new()).cond()?;
+        let mut _condexit = self
+            .p
+            .parse_expr(self.fs, &mut ExprDesc::new())
+            .cond_exp()?;
 
         Ok(())
     }
 
     // parlist_stmt ::= [ {name `,`} (name | `...`) ]
     pub(super) fn parlist_stmt(&mut self) -> Result<(), ParseErr> {
+        log::debug!("parse parlist_stmt");
+
         let mut _nparams = 0;
         let mut isvararg = false;
         if !match_token!(test: self.p, Token::Operator(')')) {
@@ -246,6 +280,8 @@ impl<'s, 't> ParseStmt<'s, 't> {
         _expr: &mut ExprDesc,
         ismethod: bool,
     ) -> Result<(), ParseErr> {
+        log::debug!("parse body_stmt");
+
         let mut fs = FuncState::new();
 
         // parse `(`
@@ -259,7 +295,7 @@ impl<'s, 't> ParseStmt<'s, 't> {
         // parse `)`
         match_token!(consume: self.p, Token::Operator(')'))?;
         // parse block_stmt
-        self.p.parse_stmt(&mut fs).stmtlist()?;
+        self.p.parse_stmt(&mut fs).block_stmt()?;
         // parse `end`
         match_token!(consume: self.p, Token::End)?;
         Ok(())
@@ -267,6 +303,8 @@ impl<'s, 't> ParseStmt<'s, 't> {
 
     // fieldsel_stmt -> [`.` | `:`] name
     pub(super) fn fieldsel_stmt(&mut self, _expr: &mut ExprDesc) -> Result<(), ParseErr> {
+        log::debug!("parse fieldsel_stmt");
+
         // parse [`.` | `:`]
         self.p.parse_lex().skip();
         // parse name
@@ -277,6 +315,8 @@ impl<'s, 't> ParseStmt<'s, 't> {
 
     // funcname_stmt -> name { fieldsel_stmt } [ `:` name ]
     pub(super) fn funcname_stmt(&mut self, expr: &mut ExprDesc) -> Result<bool, ParseErr> {
+        log::debug!("parse funcname_stmt");
+
         // parse name
         let _name = self.p.parse_lex().name()?;
         // parse { fieldsel_stmt }
@@ -295,6 +335,8 @@ impl<'s, 't> ParseStmt<'s, 't> {
 
     // func_stmt := `function` funcname_stmt body_stmt
     pub(super) fn func_stmt(&mut self) -> Result<(), ParseErr> {
+        log::debug!("parse func_stmt");
+
         let mut name_expr = ExprDesc::new();
         let mut func_expr = ExprDesc::new();
 
@@ -310,6 +352,8 @@ impl<'s, 't> ParseStmt<'s, 't> {
 
     // localfunc_stmt ::= name body_stmt
     pub(super) fn localfunc_stmt(&mut self) -> Result<(), ParseErr> {
+        log::debug!("parse localfunc_stmt");
+
         // parse name
         let _name = self.p.parse_lex().name()?;
         // parse body_stmt
@@ -320,6 +364,8 @@ impl<'s, 't> ParseStmt<'s, 't> {
 
     // attrib_stmt ::= [`<` name `>`]
     pub(super) fn attrib_stmt(&mut self) -> Result<VarKind, ParseErr> {
+        log::debug!("parse attrib_stmt");
+
         // parse `<`
         if match_token!(test_consume: self.p, Token::Operator('<')) {
             // parse name
@@ -338,6 +384,8 @@ impl<'s, 't> ParseStmt<'s, 't> {
 
     // localvar_stmt ::= name attrib_stmt { `,` name attrib_stmt }[ `=` exprlist_exp ]
     pub(super) fn localvar_stmt(&mut self) -> Result<(), ParseErr> {
+        log::debug!("parse localvar_stmt");
+
         loop {
             // parse name
             let _name = self.p.parse_lex().name()?;
@@ -353,7 +401,7 @@ impl<'s, 't> ParseStmt<'s, 't> {
             // parse exprlist_exp
             self.p
                 .parse_expr(self.fs, &mut ExprDesc::new())
-                .exprlist()?;
+                .exprlist_exp()?;
         }
 
         Ok(())
@@ -361,6 +409,8 @@ impl<'s, 't> ParseStmt<'s, 't> {
 
     // local_stmt ::= `local` [localfunc_stmt | localvar_stmt]
     pub(super) fn local_stmt(&mut self) -> Result<(), ParseErr> {
+        log::debug!("parse local_stmt");
+
         // parse `local`
         self.p.parse_lex().skip();
         // parse `function`
@@ -375,6 +425,8 @@ impl<'s, 't> ParseStmt<'s, 't> {
 
     // label_stmt ::= `::` name `::`
     pub(super) fn label_stmt(&mut self) -> Result<(), ParseErr> {
+        log::debug!("parse label_stmt");
+
         // parse `::`
         self.p.parse_lex().skip();
         // parse name
@@ -387,6 +439,8 @@ impl<'s, 't> ParseStmt<'s, 't> {
 
     // return_stmt ::= `return` [explist_exp] [`;`]
     pub(super) fn return_stmt(&mut self) -> Result<(), ParseErr> {
+        log::debug!("parse return_stmt");
+
         // parse `return`
         self.p.parse_lex().skip();
 
@@ -394,7 +448,7 @@ impl<'s, 't> ParseStmt<'s, 't> {
         if !self.block_follow(true) && !match_token!(test: self.p, Token::Operator(';')) {
             self.p
                 .parse_expr(self.fs, &mut ExprDesc::new())
-                .exprlist()?;
+                .exprlist_exp()?;
         }
 
         // parse `;`
@@ -405,6 +459,8 @@ impl<'s, 't> ParseStmt<'s, 't> {
 
     // break_stmt ::= `break`
     pub(super) fn break_stmt(&mut self) -> Result<(), ParseErr> {
+        log::debug!("parse break_stmt");
+
         // parse `break`
         self.p.parse_lex().skip();
 
@@ -413,6 +469,8 @@ impl<'s, 't> ParseStmt<'s, 't> {
 
     // goto_stmt ::= `goto` name
     pub(super) fn goto_stmt(&mut self) -> Result<(), ParseErr> {
+        log::debug!("parse goto_stmt");
+
         // parse `goto`
         self.p.parse_lex().skip();
         // parse name
@@ -424,12 +482,14 @@ impl<'s, 't> ParseStmt<'s, 't> {
     // assigment_stmt ::= suffixed_exp restassign_stmt
     // restassign_stmt ::= ',' suffixed_exp restassign_stmt | `=` explist_exp
     pub(super) fn restassign_stmt(&mut self) -> Result<(), ParseErr> {
+        log::debug!("parse restassign_stmt");
+
         // parse `,`
         if match_token!(test_consume: self.p, Token::Operator(',')) {
             // parse suffixed_exp
             self.p
                 .parse_expr(self.fs, &mut ExprDesc::new())
-                .suffixed()?;
+                .suffixed_exp()?;
             // parse restassign_stmt
             self.restassign_stmt()?;
         } else {
@@ -438,17 +498,19 @@ impl<'s, 't> ParseStmt<'s, 't> {
             // parse exprlist_exp
             self.p
                 .parse_expr(self.fs, &mut ExprDesc::new())
-                .exprlist()?;
+                .exprlist_exp()?;
         }
         Ok(())
     }
 
     // expr_stmt -> func_stmt | assigment_stmt
     pub(super) fn expr_stmt(&mut self) -> Result<(), ParseErr> {
+        log::debug!("parse expr_stmt");
+
         // parse suffixed_exp
         self.p
             .parse_expr(self.fs, &mut ExprDesc::new())
-            .suffixed()?;
+            .suffixed_exp()?;
 
         if match_token!(test: self.p, Token::Operator('=' | ',')) {
             self.restassign_stmt()?;
@@ -480,6 +542,8 @@ impl<'s, 't> ParseStmt<'s, 't> {
     }
 
     pub(super) fn stmtlist(&mut self) -> Result<(), ParseErr> {
+        log::debug!("parse stmtlist");
+
         while self.p.lex(|x| !x.token.block_follow(true)) {
             if self.p.lex(|x| matches!(x.token, Token::Return)) {
                 self.stmt()?;
@@ -508,11 +572,18 @@ mod tests {
             local function ff(k) 
                 return 12.3;
             end
+            if 1 + 2 == 3 then
+                func_call(5);
+            elseif 3 + 4 >= 5 then
+                a = 7;
+            else
+                b = func_call(7, 5);
+            end
             end",
         );
 
         let result = parser.parse();
 
-        println!("{}", result.is_ok());
+        assert!(result.is_ok());
     }
 }
