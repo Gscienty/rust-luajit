@@ -1,6 +1,5 @@
 use crate::{
     code::{codelimit, Code, OpCode},
-    lexer::Token,
     object::{ExprDesc, ExprKind, VarKind},
 };
 

@@ -232,11 +232,9 @@ impl<'s, 't, 'v> ParseExpr<'s, 't, 'v> {
         log::debug!("parse cond_exp");
 
         self.expr_exp()?;
-
         if matches!(self.expr.kind, ExprKind::NIL) {
             self.expr.kind = ExprKind::FALSE;
         }
-        self.p.parse_code(self.fs).jmp_iftrue(self.expr)?;
 
         Ok(self.expr.f)
     }

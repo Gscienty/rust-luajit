@@ -579,6 +579,17 @@ mod tests {
             else
                 b = func_call(7, 5);
             end
+            while a == 6 do
+                a = a + 1;
+            end
+            do
+                b = b + a;
+            end
+            for key = 1, 10, 5 do
+            end
+            for key = 1, 20 do
+                c = \"abc\";
+            end
             end",
         );
 

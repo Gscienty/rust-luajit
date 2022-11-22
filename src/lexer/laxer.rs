@@ -232,9 +232,10 @@ impl Lexer {
         }
 
         self.save_next();
-        Ok(Token::String(
-            self.token_buffer[1..self.token_buffer.len() - 1].to_string(),
-        ))
+        let value = self.token_buffer[1..self.token_buffer.len() - 1].to_string();
+        self.token_buffer.clear();
+
+        Ok(Token::String(value))
     }
 
     fn parse_longstring(&mut self, sep: i32, is_comment: bool) -> Result<Token, &str> {
@@ -268,9 +269,10 @@ impl Lexer {
         if is_comment {
             Ok(Token::Nil)
         } else {
-            Ok(Token::String(
-                self.token_buffer[1..self.token_buffer.len() - 1].to_string(),
-            ))
+            let value = self.token_buffer[1..self.token_buffer.len() - 1].to_string();
+            self.token_buffer.clear();
+
+            Ok(Token::String(value))
         }
     }
 
