@@ -587,9 +587,17 @@ mod tests {
             end
             for key = 1, 10, 5 do
             end
-            for key = 1, 20 do
+            for key, value in 1, 20 do
                 c = \"abc\";
             end
+            repeat
+                a = a + b;
+                break;
+            until c == 5;
+
+            goto label_name;
+
+            ::label_name::
             end",
         );
 
