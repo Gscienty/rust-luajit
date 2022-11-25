@@ -11,22 +11,22 @@ impl<'s> ParseReg<'s> {
         Self { p }
     }
 
-    pub(super) fn str_tok(&mut self, _value: &str) -> Result<Expr, ParseErr> {
-        // TODO
+    pub(super) fn str_tok(&mut self, value: &str) -> Result<Expr, ParseErr> {
+        let k = self.p.constant_pool.borrow_mut().adds(value);
 
-        Ok(Expr::k(17))
+        Ok(Expr::k(k))
     }
 
-    pub(super) fn float_tok(&mut self, _value: f64) -> Result<Expr, ParseErr> {
-        // TODO
+    pub(super) fn float_tok(&mut self, value: f64) -> Result<Expr, ParseErr> {
+        let k = self.p.constant_pool.borrow_mut().addf(value);
 
-        Ok(Expr::k(17))
+        Ok(Expr::k(k))
     }
 
-    pub(super) fn int_tok(&mut self, _value: i64) -> Result<Expr, ParseErr> {
-        // TODO
+    pub(super) fn int_tok(&mut self, value: i64) -> Result<Expr, ParseErr> {
+        let k = self.p.constant_pool.borrow_mut().addi(value);
 
-        Ok(Expr::k(17))
+        Ok(Expr::k(k))
     }
 
     pub(super) fn infix(&mut self, op: BinOpr, exp: Expr) -> Result<Expr, ParseErr> {

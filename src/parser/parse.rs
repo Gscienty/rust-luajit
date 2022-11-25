@@ -1,7 +1,9 @@
+use std::{cell::RefCell, rc::Rc};
+
 use crate::{
     code::IntermediateCode,
     lexer::Lexer,
-    object::{ExprDesc, LabelDesc, RefValue, Table, VarDesc, VarKind},
+    object::{ConstantPool, ExprDesc, LabelDesc, RefValue, Table, VarDesc, VarKind},
 };
 
 use super::{
@@ -25,6 +27,7 @@ pub(crate) struct Parser {
     codes: Vec<IntermediateCode>,
 
     pub(super) freereg: usize,
+    pub(super) constant_pool: Rc<RefCell<ConstantPool>>,
 }
 
 impl Parser {
@@ -46,6 +49,7 @@ impl Parser {
             codes: Vec::new(),
 
             freereg: 0,
+            constant_pool: Rc::new(RefCell::new(ConstantPool::new())),
         }
     }
 

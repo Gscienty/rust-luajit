@@ -176,7 +176,7 @@ mod tests {
 
     #[test]
     fn test_code_concat() {
-        let mut p = Parser::new("local a = 7 + 8 * 'c' * 3 * 'd' + 'a' + 'b' .. 'a'");
+        let mut p = Parser::new("local a = 7 + 8 * 'c' * 3 * 'd' + 'a' + 'b' .. 'a' + 120");
 
         assert!(p.parse().is_ok());
 

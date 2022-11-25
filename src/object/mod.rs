@@ -1,3 +1,4 @@
+mod constant_pool;
 mod expr;
 mod label;
 mod loc_var;
@@ -7,6 +8,7 @@ mod upval;
 mod value;
 mod variable;
 
+pub(crate) use constant_pool::*;
 pub(crate) use expr::*;
 pub(crate) use label::*;
 pub(crate) use loc_var::*;
