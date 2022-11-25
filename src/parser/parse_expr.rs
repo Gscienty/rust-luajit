@@ -1,33 +1,12 @@
-use crate::{
-    code::{codelimit, Code, OpCode},
-    lexer::Token,
-    match_token,
-    object::{ExprDesc, ExprKind, RefValue},
-};
+use crate::{lexer::Token, match_token, object::ExprDesc};
 
-use super::{BinOpr, FuncState, ParseErr, Parser, UnOpr};
+use super::{BinOpr, Expr, FuncState, ParseErr, Parser, UnOpr};
 
 pub(super) struct ParseExpr<'s, 't, 'v> {
     fs: &'s mut FuncState,
     p: &'t mut Parser,
 
     expr: &'v mut ExprDesc,
-}
-
-macro_rules! init_exp {
-    ($expr: expr, $kind: expr, $info: expr) => {{
-        $expr.t = codelimit::NO_JMP;
-        $expr.f = codelimit::NO_JMP;
-        $expr.kind = $kind;
-        $expr.info = $info;
-    }};
-    ($expr: expr, $kind: expr, $info: expr, $val: expr) => {{
-        $expr.t = codelimit::NO_JMP;
-        $expr.f = codelimit::NO_JMP;
-        $expr.kind = $kind;
-        $expr.info = $info;
-        $expr.val = Some($val);
-    }};
 }
 
 impl<'s, 't, 'v> ParseExpr<'s, 't, 'v> {
@@ -124,31 +103,25 @@ impl<'s, 't, 'v> ParseExpr<'s, 't, 'v> {
 
     // simple_exp -> FLT | INT | STRING | NIL | TRUE | FALSE | ... | constructor_exp | FUNCTION body
     // | suffixed_exp
-    pub(super) fn simple_exp(&mut self) -> Result<(), ParseErr> {
+    pub(super) fn simple_exp(&mut self) -> Result<Expr, ParseErr> {
         log::debug!("parse simple_exp");
 
-        match self.p.parse_lex().current_token() {
-            Token::Integer(val) => init_exp!(self.expr, ExprKind::KFLT, 0, RefValue::from(val)),
-            Token::Number(val) => init_exp!(self.expr, ExprKind::KINT, 0, RefValue::from(val)),
-            Token::String(val) => {
-                init_exp!(self.expr, ExprKind::KSTR, 0, RefValue::from(val.as_str()))
-            }
-            Token::Nil => init_exp!(self.expr, ExprKind::NIL, 0),
-            Token::True => init_exp!(self.expr, ExprKind::TRUE, 0),
-            Token::False => init_exp!(self.expr, ExprKind::FALSE, 0),
+        let expr = match self.p.parse_lex().current_token() {
+            Token::Integer(val) => Expr::from(val),
+            Token::Number(val) => Expr::from(val),
+            Token::String(val) => Expr::from(val.as_str()),
+            Token::Nil => Expr::nil(),
+            Token::True => Expr::from(true),
+            Token::False => Expr::from(false),
             Token::Dots => {
                 if !self.fs.prop().proto.prop().is_vararg {
                     return Err(ParseErr::BadUsage);
                 }
-                init_exp!(
-                    self.expr,
-                    ExprKind::VARARG,
-                    self.fs.emit(Code::new_abc(OpCode::VARARG, 0, 0, 1, false)?)
-                )
+                Expr::vararg(self.p.parse_code().emit_vararg())
             }
             Token::Operator('{') => {
                 self.constructor_exp()?;
-                return Ok(());
+                return Ok(Expr::todo());
             }
             Token::Function => {
                 // parse `function`
@@ -156,47 +129,50 @@ impl<'s, 't, 'v> ParseExpr<'s, 't, 'v> {
                 // parse body_stmt
                 self.p.parse_stmt(self.fs).body_stmt(self.expr, false)?;
 
-                return Ok(());
+                return Ok(Expr::todo());
             }
             _ => {
                 // parse suffixed_exp
                 self.suffixed_exp()?;
 
-                return Ok(());
+                return Ok(Expr::todo());
             }
-        }
+        };
         self.p.parse_lex().skip();
 
-        Ok(())
+        Ok(expr)
     }
 
     // sub_exp -> (simple_exp | unop sub_exp) { binop sub_exp }
-    pub(super) fn sub_exp(&mut self, limit: u8) -> Result<BinOpr, ParseErr> {
+    pub(super) fn sub_exp(&mut self, limit: u8) -> Result<(BinOpr, Expr), ParseErr> {
         log::debug!("parse sub_exp");
 
         let unop = UnOpr::from(self.p.parse_lex().current_token());
 
-        if matches!(unop, UnOpr::NoOpr) {
+        let mut exp = if matches!(unop, UnOpr::NoOpr) {
             // parse simple_exp
-            self.simple_exp()?;
+            self.simple_exp()?
         } else {
             // parse unop
             self.p.parse_lex().skip();
             // parse sub_exp
-            self.sub_exp(BinOpr::UNARY_PRI)?;
-        }
+            let (_, expr) = self.sub_exp(BinOpr::UNARY_PRI)?;
+            expr
+        };
 
         let mut binop = BinOpr::from(self.p.parse_lex().current_token());
         while !matches!(binop, BinOpr::NoOpr) && binop.lpri() > limit {
             // parse binop
             self.p.parse_lex().skip();
-            // parse sub_exp
-            let next_binop = self.sub_exp(binop.rpri())?;
 
-            binop = next_binop;
+            exp = self.p.parse_reg().infix(binop, exp)?;
+            let (nbop, nexp) = self.sub_exp(binop.rpri())?;
+            exp = self.p.parse_code().posfix(binop, exp, nexp)?;
+
+            binop = nbop;
         }
 
-        Ok(binop)
+        Ok((binop, exp))
     }
 
     pub(super) fn expr_exp(&mut self) -> Result<(), ParseErr> {
@@ -226,17 +202,6 @@ impl<'s, 't, 'v> ParseExpr<'s, 't, 'v> {
         }
 
         Ok(n)
-    }
-
-    pub(super) fn cond_exp(&mut self) -> Result<usize, ParseErr> {
-        log::debug!("parse cond_exp");
-
-        self.expr_exp()?;
-        if matches!(self.expr.kind, ExprKind::NIL) {
-            self.expr.kind = ExprKind::FALSE;
-        }
-
-        Ok(self.expr.f)
     }
 
     // primary_exp ::= name | `(` exp `)`
@@ -324,20 +289,5 @@ impl<'s, 't, 'v> ParseExpr<'s, 't, 'v> {
                 _ => break Ok(()),
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn expr_unm() {
-        let mut parser = Parser::new("-10");
-        parser.lex_mut(|x| x.token_next());
-        let mut fs = FuncState::new();
-        let result = parser.parse_expr(&mut fs, &mut ExprDesc::new()).expr_exp();
-
-        println!("{}", result.is_ok())
     }
 }

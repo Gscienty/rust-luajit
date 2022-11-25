@@ -6,6 +6,31 @@ pub(super) struct ParseLex<'s> {
     p: &'s mut Parser,
 }
 
+#[macro_export]
+macro_rules! match_token {
+    (consume: $parser: expr, $token: pat) => {
+        $parser.lex_mut(|x| match &x.token {
+            $token => {
+                x.token_next();
+                Ok(())
+            }
+            _ => Err(ParseErr::UnexpectedSymbol),
+        })
+    };
+    (test_consume: $parser: expr, $token: pat) => {
+        $parser.lex_mut(|x| match &x.token {
+            $token => {
+                x.token_next();
+                true
+            }
+            _ => false,
+        })
+    };
+    (test: $parser: expr, $token: pat) => {
+        $parser.lex(|x| matches!(x.token, $token))
+    };
+}
+
 impl<'s> ParseLex<'s> {
     pub(super) fn new(p: &'s mut Parser) -> Self {
         Self { p }

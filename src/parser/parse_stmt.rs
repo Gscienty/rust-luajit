@@ -1,6 +1,7 @@
 use crate::{
     code::codelimit,
     lexer::Token,
+    match_token,
     object::{ExprDesc, VarKind},
 };
 
@@ -9,31 +10,6 @@ use super::{FuncState, ParseErr, ParseLex, Parser};
 pub(super) struct ParseStmt<'s, 't> {
     fs: &'s mut FuncState,
     p: &'t mut Parser,
-}
-
-#[macro_export]
-macro_rules! match_token {
-    (consume: $parser: expr, $token: pat) => {
-        $parser.lex_mut(|x| match &x.token {
-            $token => {
-                x.token_next();
-                Ok(())
-            }
-            _ => Err(ParseErr::UnexpectedSymbol),
-        })
-    };
-    (test_consume: $parser: expr, $token: pat) => {
-        $parser.lex_mut(|x| match &x.token {
-            $token => {
-                x.token_next();
-                true
-            }
-            _ => false,
-        })
-    };
-    (test: $parser: expr, $token: pat) => {
-        $parser.lex(|x| matches!(x.token, $token))
-    };
 }
 
 impl<'s, 't> ParseStmt<'s, 't> {
@@ -108,10 +84,9 @@ impl<'s, 't> ParseStmt<'s, 't> {
         // parse `while`
         self.p.parse_lex().skip();
         // parse cond_exp
-        let _condexit = self
-            .p
+        self.p
             .parse_expr(self.fs, &mut ExprDesc::new())
-            .cond_exp()?;
+            .expr_exp()?;
         // parse `do`
         match_token!(consume: self.p, Token::Do)?;
         // parse block_stmt
@@ -233,10 +208,9 @@ impl<'s, 't> ParseStmt<'s, 't> {
         // parse `until`
         match_token!(consume: self.p, Token::Until)?;
         // parse cond_exp
-        let mut _condexit = self
-            .p
+        self.p
             .parse_expr(self.fs, &mut ExprDesc::new())
-            .cond_exp()?;
+            .expr_exp()?;
 
         Ok(())
     }
@@ -288,7 +262,6 @@ impl<'s, 't> ParseStmt<'s, 't> {
         match_token!(consume: self.p, Token::Operator('('))?;
         if ismethod {
             self.p.pushloc(&fs, "self");
-            self.p.parse_var(&mut fs).adjust_localvars(1);
         }
         // parse parlist_stmt
         self.p.parse_stmt(&mut fs).parlist_stmt()?;

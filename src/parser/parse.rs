@@ -1,10 +1,11 @@
 use crate::{
+    code::IntermediateCode,
     lexer::Lexer,
     object::{ExprDesc, LabelDesc, RefValue, Table, VarDesc, VarKind},
 };
 
 use super::{
-    FuncState, ParseCode, ParseErr, ParseExpr, ParseFunc, ParseGTab, ParseLex, ParseStmt, ParseVar,
+    FuncState, ParseCode, ParseErr, ParseExpr, ParseFunc, ParseGTab, ParseLex, ParseReg, ParseStmt,
 };
 
 pub(crate) struct Parser {
@@ -20,6 +21,10 @@ pub(crate) struct Parser {
     actvar: Vec<VarDesc>,
     goto: Vec<LabelDesc>,
     label: Vec<LabelDesc>,
+
+    codes: Vec<IntermediateCode>,
+
+    pub(super) freereg: usize,
 }
 
 impl Parser {
@@ -37,6 +42,10 @@ impl Parser {
             actvar: Vec::new(),
             goto: Vec::new(),
             label: Vec::new(),
+
+            codes: Vec::new(),
+
+            freereg: 0,
         }
     }
 
@@ -54,14 +63,39 @@ impl Parser {
         f(&mut self.lexer)
     }
 
-    pub(super) fn global_mut<U, F>(&mut self, f: F) -> U
+    pub(super) fn emit(&mut self, code: IntermediateCode) -> usize {
+        self.codes.push(code);
+        self.codes.len() - 1
+    }
+
+    pub(super) fn modify_code<F>(&mut self, pc: usize, f: F)
     where
-        F: FnOnce(&mut Table) -> U,
+        F: FnOnce(&mut IntermediateCode),
     {
-        match self.gtab.table_mut(|table| f(table)) {
-            Some(result) => result,
-            _ => unreachable!(),
+        if let Some(code) = self.codes.get_mut(pc) {
+            f(code)
         }
+    }
+
+    pub(super) fn get_code(&self, pc: usize) -> Option<&IntermediateCode> {
+        self.codes.get(pc)
+    }
+
+    pub(super) fn get_codelen(&self) -> usize {
+        self.codes.len()
+    }
+
+    pub(super) fn reserver_regs(&mut self, n: usize) {
+        self.freereg += n
+    }
+
+    pub(super) fn free_reg(&mut self, reg: usize) -> Result<(), ParseErr> {
+        self.freereg -= 1;
+
+        if self.freereg != reg {
+            return Err(ParseErr::BadUsage);
+        }
+        Ok(())
     }
 
     pub(super) fn global<U, F>(&self, f: F) -> U
@@ -69,6 +103,16 @@ impl Parser {
         F: FnOnce(&Table) -> U,
     {
         match self.gtab.table(|table| f(&table)) {
+            Some(result) => result,
+            _ => unreachable!(),
+        }
+    }
+
+    pub(super) fn global_mut<U, F>(&mut self, f: F) -> U
+    where
+        F: FnOnce(&mut Table) -> U,
+    {
+        match self.gtab.table_mut(|table| f(table)) {
             Some(result) => result,
             _ => unreachable!(),
         }
@@ -115,12 +159,12 @@ impl Parser {
         ParseStmt::new(fs, self)
     }
 
-    pub(super) fn parse_code<'s>(&'s mut self, fs: &'s mut FuncState) -> ParseCode {
-        ParseCode::new(fs, self)
+    pub(super) fn parse_code<'s>(&'s mut self) -> ParseCode {
+        ParseCode::new(self)
     }
 
-    pub(super) fn parse_var<'s>(&'s mut self, fs: &'s mut FuncState) -> ParseVar {
-        ParseVar::new(fs, self)
+    pub(super) fn parse_reg<'s>(&'s mut self) -> ParseReg {
+        ParseReg::new(self)
     }
 
     pub(super) fn parse_expr<'s>(
