@@ -130,14 +130,14 @@ impl Expr {
         }
     }
 
-    pub(super) fn is_immediate(&self) -> bool {
+    pub(super) fn numeric(&self) -> bool {
         match self.value {
             ExprValue::Float(_) | ExprValue::Integer(_) => true,
             _ => false,
         }
     }
 
-    pub(super) fn result_inreg(&self) -> bool {
+    pub(super) fn inreg(&self) -> bool {
         matches!(self.value, ExprValue::Nonreloc(_) | ExprValue::Reloc(_))
     }
 }
@@ -172,11 +172,16 @@ impl Display for ExprValue {
 
 #[cfg(test)]
 mod tests {
-    use crate::parser::Parser;
+    use crate::{parser::Parser, utils::Logger};
 
     #[test]
     fn test_code_concat() {
-        let mut p = Parser::new("local a = 7 + 8 * 'c' * 3 * 'd' + 'a' + 'b' .. 'a' + 120");
+        log::set_logger(&Logger {}).unwrap();
+        log::set_max_level(log::LevelFilter::Debug);
+
+        let mut p = Parser::new(
+            "local a = 7 + 8 * 'c' * 3 * 'd' + 'a' + 'b' .. 'a' / 120 + 'd' // 33 - 200 % 'c' ^ 3 << 4 + 5>>2",
+        );
 
         assert!(p.parse().is_ok());
 

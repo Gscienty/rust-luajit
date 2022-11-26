@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::lexer::Token;
 
 #[derive(Clone, Copy)]
@@ -92,6 +94,35 @@ impl From<Token> for BinOpr {
             Token::SHR => BinOpr::SHR,
 
             _ => BinOpr::NoOpr,
+        }
+    }
+}
+
+impl Display for BinOpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ADD => write!(f, "add"),
+            Self::SUB => write!(f, "sub"),
+            Self::MUL => write!(f, "mul"),
+            Self::DIV => write!(f, "div"),
+            Self::IDIV => write!(f, "idiv"),
+            Self::MOD => write!(f, "mod"),
+            Self::POW => write!(f, "pow"),
+            Self::CONCAT => write!(f, "concat"),
+            Self::NE => write!(f, "ne"),
+            Self::EQ => write!(f, "eq"),
+            Self::LT => write!(f, "lt"),
+            Self::GE => write!(f, "ge"),
+            Self::LE => write!(f, "le"),
+            Self::GT => write!(f, "gt"),
+            Self::BAND => write!(f, "band"),
+            Self::BOR => write!(f, "bor"),
+            Self::BXOR => write!(f, "bxor"),
+            Self::AND => write!(f, "and"),
+            Self::OR => write!(f, "or"),
+            Self::SHL => write!(f, "shl"),
+            Self::SHR => write!(f, "shr"),
+            Self::NoOpr => write!(f, "noopr"),
         }
     }
 }

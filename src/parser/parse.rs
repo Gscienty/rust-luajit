@@ -1,7 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use crate::{
-    code::IntermediateCode,
+    code::InterCode,
     lexer::Lexer,
     object::{ConstantPool, ExprDesc, LabelDesc, RefValue, Table, VarDesc, VarKind},
 };
@@ -24,7 +24,7 @@ pub(crate) struct Parser {
     goto: Vec<LabelDesc>,
     label: Vec<LabelDesc>,
 
-    codes: Vec<IntermediateCode>,
+    codes: Vec<InterCode>,
 
     pub(super) freereg: usize,
     pub(super) constant_pool: Rc<RefCell<ConstantPool>>,
@@ -67,21 +67,21 @@ impl Parser {
         f(&mut self.lexer)
     }
 
-    pub(super) fn emit(&mut self, code: IntermediateCode) -> usize {
+    pub(super) fn emit(&mut self, code: InterCode) -> usize {
         self.codes.push(code);
         self.codes.len() - 1
     }
 
     pub(super) fn modify_code<F>(&mut self, pc: usize, f: F)
     where
-        F: FnOnce(&mut IntermediateCode),
+        F: FnOnce(&mut InterCode),
     {
         if let Some(code) = self.codes.get_mut(pc) {
             f(code)
         }
     }
 
-    pub(super) fn get_code(&self, pc: usize) -> Option<&IntermediateCode> {
+    pub(super) fn get_code(&self, pc: usize) -> Option<&InterCode> {
         self.codes.get(pc)
     }
 

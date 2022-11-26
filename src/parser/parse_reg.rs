@@ -146,12 +146,17 @@ impl<'s> ParseReg<'s> {
     }
 
     pub(super) fn exp_toanyreg(&mut self, exp: Expr) -> Result<Expr, ParseErr> {
-        // TODO
-        self.exp_tonextreg(exp)
+        if matches!(exp.value, ExprValue::Nonreloc(_)) {
+            // TODO
+
+            Ok(exp)
+        } else {
+            self.exp_tonextreg(exp)
+        }
     }
 
     pub(super) fn locreg(&mut self, exp: Expr) -> Result<usize, ParseErr> {
-        match self.exp_toanyreg(exp)?.value {
+        match exp.value {
             ExprValue::Nonreloc(reg) => Ok(reg),
             _ => Err(ParseErr::BadUsage),
         }
