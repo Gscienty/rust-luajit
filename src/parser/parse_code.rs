@@ -209,6 +209,15 @@ impl<'s> ParseCode<'s> {
         });
     }
 
+    pub(super) fn set_rb(&mut self, pc: usize, rb: u8) {
+        self.p.modify_code(pc, |c| {
+            *c = match *c {
+                InterCode::CONCAT(ra, _) => InterCode::CONCAT(ra, rb),
+                _ => *c,
+            }
+        })
+    }
+
     fn arith_imm(&mut self, op: BinOpr, reg: usize, imm: u8) -> Result<usize, ParseErr> {
         Ok(match op {
             BinOpr::ADD => self.emit_addi(reg, imm),
@@ -295,21 +304,44 @@ impl<'s> ParseCode<'s> {
 
                 Ok(e2)
             }
+            BinOpr::EQ => {
+                // TODO
+
+                Ok(e2)
+            }
+            BinOpr::NE => {
+                // TODO
+
+                Ok(e2)
+            }
             BinOpr::CONCAT => {
                 log::debug!("parse posfix concat");
-
                 let e2 = self.p.parse_reg().exp_tonextreg(e2)?;
 
-                // TODO optim
+                let pc = self.p.get_codelen() - 1;
+                let code = self.p.get_code(pc).and_then(|c| Some(*c));
 
-                match &e1.value {
-                    ExprValue::Nonreloc(reg) => {
-                        self.emit_concat(*reg);
-                        self.p.parse_reg().exp_free(e2)?;
+                match code {
+                    Some(InterCode::CONCAT(pra, prb)) => match e1.value {
+                        ExprValue::Nonreloc(reg) if reg + 1 == pra as usize => {
+                            self.set_ra(pc, reg);
+                            self.set_rb(pc, prb + 1);
 
-                        Ok(Expr::nonreloc(*reg))
-                    }
-                    _ => Err(ParseErr::BadUsage),
+                            self.p.parse_reg().exp_free(e2)?;
+
+                            Ok(e1)
+                        }
+                        _ => Err(ParseErr::BadUsage),
+                    },
+                    _ => match e1.value {
+                        ExprValue::Nonreloc(reg) => {
+                            self.emit_concat(reg);
+                            self.p.parse_reg().exp_free(e2)?;
+
+                            Ok(Expr::nonreloc(reg))
+                        }
+                        _ => Err(ParseErr::BadUsage),
+                    },
                 }
             }
             BinOpr::ADD

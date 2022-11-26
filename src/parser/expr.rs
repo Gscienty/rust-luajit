@@ -179,9 +179,7 @@ mod tests {
         log::set_logger(&Logger {}).unwrap();
         log::set_max_level(log::LevelFilter::Debug);
 
-        let mut p = Parser::new(
-            "local a = 7 + 8 * 'c' * 3 * 'd' + 'a' + 'b' .. 'a' / 120 + 'd' // 33 - 200 % 'c' ^ 3 << 4 + 5>>2",
-        );
+        let mut p = Parser::new("local a = 'a'..'b'..'c'..'d' + 'e' .. 'f'");
 
         assert!(p.parse().is_ok());
 

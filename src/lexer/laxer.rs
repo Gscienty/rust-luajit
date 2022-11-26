@@ -277,6 +277,7 @@ impl Lexer {
     }
 
     fn scan(&mut self) -> Result<Token, &str> {
+        self.token_buffer.clear();
         loop {
             if matches!(self.current, Some(chr) if chr.is_alphanumeric()) {
                 if matches!(self.current, Some(chr) if chr.is_numeric()) {
@@ -406,6 +407,7 @@ impl Lexer {
                         }
                         break Ok(Token::Concat);
                     } else if !matches!(self.current, Some(chr) if chr.is_digit(10)) {
+                        self.token_buffer.clear();
                         break Ok(Token::Operator('.'));
                     } else {
                         break self.number();
