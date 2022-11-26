@@ -11,25 +11,66 @@ impl<'s> ParseReg<'s> {
         Self { p }
     }
 
-    pub(super) fn str_tok(&mut self, value: &str) -> Result<Expr, ParseErr> {
+    pub(super) fn stok(&mut self, value: &str) -> Result<Expr, ParseErr> {
         let k = self.p.constant_pool.borrow_mut().adds(value);
 
         Ok(Expr::k(k))
     }
 
-    pub(super) fn float_tok(&mut self, value: f64) -> Result<Expr, ParseErr> {
+    pub(super) fn ftok(&mut self, value: f64) -> Result<Expr, ParseErr> {
         let k = self.p.constant_pool.borrow_mut().addf(value);
 
         Ok(Expr::k(k))
     }
 
-    pub(super) fn int_tok(&mut self, value: i64) -> Result<Expr, ParseErr> {
+    pub(super) fn itok(&mut self, value: i64) -> Result<Expr, ParseErr> {
         let k = self.p.constant_pool.borrow_mut().addi(value);
 
         Ok(Expr::k(k))
     }
 
+    pub(super) fn ntok(&mut self) -> Result<Expr, ParseErr> {
+        let k = self.p.constant_pool.borrow_mut().addn();
+
+        Ok(Expr::k(k))
+    }
+
+    pub(super) fn btok(&mut self, value: bool) -> Result<Expr, ParseErr> {
+        let k = self.p.constant_pool.borrow_mut().addb(value);
+
+        Ok(Expr::k(k))
+    }
+
+    pub(super) fn exp_tok(&mut self, exp: Expr) -> Result<Expr, ParseErr> {
+        match exp.value {
+            ExprValue::Bool(v) => self.btok(v),
+            ExprValue::Nil => self.ntok(),
+            ExprValue::Integer(v) => self.itok(v),
+            ExprValue::Float(v) => self.ftok(v),
+            ExprValue::String(v) => self.stok(v.as_str()),
+            _ => Err(ParseErr::BadUsage),
+        }
+    }
+
+    pub(super) fn exp_tokreg(&mut self, exp: Expr) -> Result<Expr, ParseErr> {
+        let istok = matches!(
+            exp.value,
+            ExprValue::Bool(_)
+                | ExprValue::Nil
+                | ExprValue::Integer(_)
+                | ExprValue::Float(_)
+                | ExprValue::String(_)
+        );
+
+        if istok {
+            self.exp_tok(exp)
+        } else {
+            self.exp_toanyreg(exp)
+        }
+    }
+
     pub(super) fn infix(&mut self, op: BinOpr, exp: Expr) -> Result<Expr, ParseErr> {
+        log::debug!("parse infix, op: {}", op);
         // TODO
 
         match op {
@@ -51,8 +92,8 @@ impl<'s> ParseReg<'s> {
                 _ => self.exp_toanyreg(exp),
             },
             BinOpr::CONCAT => self.exp_tonextreg(exp),
-            BinOpr::EQ | BinOpr::NE => Ok(Expr::todo()),
-            BinOpr::LT | BinOpr::LE | BinOpr::GT | BinOpr::GE => Ok(Expr::todo()),
+            BinOpr::EQ | BinOpr::NE => self.exp_tokreg(exp),
+            BinOpr::LT | BinOpr::LE | BinOpr::GT | BinOpr::GE => self.exp_toanyreg(exp),
             _ => Err(ParseErr::BadUsage),
         }
     }
@@ -70,7 +111,7 @@ impl<'s> ParseReg<'s> {
                 Ok(Expr::nonreloc(reg))
             }
             ExprValue::String(value) => {
-                let exp = self.str_tok(&value)?;
+                let exp = self.stok(&value)?;
                 self.discharge_toreg(exp, reg)
             }
             ExprValue::Float(value) => {
@@ -81,7 +122,7 @@ impl<'s> ParseReg<'s> {
                     self.p.parse_code().emit_loadfloat(reg, value);
                     Ok(Expr::nonreloc(reg))
                 } else {
-                    let exp = self.float_tok(value)?;
+                    let exp = self.ftok(value)?;
                     self.discharge_toreg(exp, reg)
                 }
             }
@@ -90,7 +131,7 @@ impl<'s> ParseReg<'s> {
                     self.p.parse_code().emit_loadint(reg, value);
                     Ok(Expr::nonreloc(reg))
                 } else {
-                    let exp = self.int_tok(value)?;
+                    let exp = self.itok(value)?;
                     self.discharge_toreg(exp, reg)
                 }
             }
@@ -124,6 +165,29 @@ impl<'s> ParseReg<'s> {
         }
     }
 
+    pub(super) fn exps_free(&mut self, e1: Expr, e2: Expr) -> Result<(), ParseErr> {
+        match e1.value {
+            ExprValue::Nonreloc(r1) => match e2.value {
+                ExprValue::Nonreloc(r2) => {
+                    if r1 < r2 {
+                        self.p.free_reg(r2)?;
+                        self.p.free_reg(r1)?;
+                    } else {
+                        self.p.free_reg(r1)?;
+                        self.p.free_reg(r2)?;
+                    }
+                }
+                _ => self.p.free_reg(r1)?,
+            },
+            _ => match e2.value {
+                ExprValue::Nonreloc(r2) => self.p.free_reg(r2)?,
+                _ => {}
+            },
+        };
+
+        Ok(())
+    }
+
     pub(super) fn exp_free(&mut self, exp: Expr) -> Result<(), ParseErr> {
         match exp.value {
             ExprValue::Nonreloc(reg) => self.p.free_reg(reg),
@@ -132,9 +196,20 @@ impl<'s> ParseReg<'s> {
     }
 
     pub(super) fn exp_toreg(&mut self, exp: Expr, reg: usize) -> Result<Expr, ParseErr> {
-        let _exp = self.discharge_toreg(exp, reg)?;
-        // TODO
-        Ok(Expr::nonreloc(reg))
+        let mut exp = self.discharge_toreg(exp, reg)?;
+        match exp.value {
+            ExprValue::Jump(pc) => self
+                .p
+                .parse_code()
+                .concat_jumplist(&mut exp.true_jumpto, Some(pc))?,
+            _ => {}
+        };
+
+        if exp.hasjump() {
+            // TODO fixjump
+        }
+
+        Ok(Expr::nonreloc(reg).tj(exp.true_jumpto).fj(exp.false_jumpto))
     }
 
     pub(super) fn exp_tonextreg(&mut self, exp: Expr) -> Result<Expr, ParseErr> {

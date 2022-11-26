@@ -9,7 +9,7 @@ pub(crate) enum InterCode {
     LOADINT(u8, u32),   // rA, rB; R[rA] := rB
     LOADFLOAT(u8, u32), // rA, rB; R[rA] := rB
     VARARG(u8, u8),     // rA, rC; R[rA], R[rA+1], ... , R[rA+rC-2] := vararg
-    JMP(u32),           // sJ; pc += sJ
+    JMP(Option<u32>),   // sJ; pc += sJ
     MOVE(u8, u8),       // rA, rB; R[rA] := R[rB]
     CONCAT(u8, u8),     // rA, rB; R[rA] := R[rA] .. ... .. R[rA + rB - 1]
     ADDI(u8, u8, u8),   // rA, rB, rC: R[rA] := R[rB] + rC
@@ -31,6 +31,21 @@ pub(crate) enum InterCode {
     SHL(u8, u8, u8),    // rA, rB, rC: R[rA] := R[rB] << R[rC]
     SHRI(u8, u8, u8),   // rA, rB, rC: R[rA] := R[rB] >> rC
     SHR(u8, u8, u8),    // rA, rB, rC: R[rA] := R[rB] >> R[rC]
+    BANDK(u8, u8, u8),  // rA, rB, rC: R[rA] := R[rB] >> R[rC]
+    BAND(u8, u8, u8),   // rA, rB, rC: R[rA] := R[rB] >> R[rC]
+    BORK(u8, u8, u8),   // rA, rB, rC: R[rA] := R[rB] >> R[rC]
+    BOR(u8, u8, u8),    // rA, rB, rC: R[rA] := R[rB] >> R[rC]
+    BXORK(u8, u8, u8),  // rA, rB, rC: R[rA] := R[rB] >> R[rC]
+    BXOR(u8, u8, u8),   // rA, rB, rC: R[rA] := R[rB] >> R[rC]
+    EQI(u8, u32, bool), // rA, sB, k: if (R[rA] == sB) ~= k then pc++
+    EQ(u8, u8, bool),   // rA, rB, k: if (R[rA] == R[rB]) ~= k then pc++
+    EQK(u8, u8, bool),  // rA, rB, k: if (R[rA] == K[rB]) ~= k then pc++
+    LT(u8, u8, bool),   // rA, rB, k: if (R[rA] < R[rB]) ~= k then pc++
+    LE(u8, u8, bool),   // rA, rB, k: if (R[rA] <= R[rB]) ~= k then pc++
+    LTI(u8, u32, bool), // rA, sB, k: if (R[rA] < sB) ~= k then pc++
+    LEI(u8, u32, bool), // rA, sB, k: if (R[rA] <= sB) ~= k then pc++
+    GTI(u8, u32, bool), // rA, sB, k: if (R[rA] > sB) ~= k then pc++
+    GEI(u8, u32, bool), // rA, sB, k: if (R[rA] >= sB) ~= k then pc++
 }
 
 impl Display for InterCode {
@@ -43,7 +58,10 @@ impl Display for InterCode {
             Self::LOADINT(ra, rb) => write!(f, "LOADINT rA({}), rB({})", *ra, *rb),
             Self::LOADFLOAT(ra, rb) => write!(f, "LOADFLOAT rA({}), rB({})", *ra, *rb),
             Self::VARARG(ra, rc) => write!(f, "VARARG rA({}), rC({})", *ra, *rc),
-            Self::JMP(sj) => write!(f, "JMP sJ({})", *sj),
+            Self::JMP(sj) => match sj {
+                Some(sj) => write!(f, "JMP sJ({})", *sj),
+                None => write!(f, "JMP NONE"),
+            },
             Self::MOVE(ra, rb) => write!(f, "MOVE rA({}), rB({})", *ra, *rb),
             Self::CONCAT(ra, rb) => write!(f, "CONCAT rA({}), rB({})", *ra, *rb),
             Self::ADDI(ra, rb, rc) => write!(f, "ADDI rA({}), rB({}), rC({})", *ra, *rb, *rc),
@@ -65,6 +83,21 @@ impl Display for InterCode {
             Self::SHRI(ra, rb, rc) => write!(f, "SHRI rA({}), rB({}), rC({})", *ra, *rb, *rc),
             Self::SHL(ra, rb, rc) => write!(f, "SHL rA({}), rB({}), rC({})", *ra, *rb, *rc),
             Self::SHR(ra, rb, rc) => write!(f, "SHR rA({}), rB({}), rC({})", *ra, *rb, *rc),
+            Self::BANDK(ra, rb, rc) => write!(f, "BANDK rA({}), rB({}), rC({})", *ra, *rb, *rc),
+            Self::BAND(ra, rb, rc) => write!(f, "BAND rA({}), rB({}), rC({})", *ra, *rb, *rc),
+            Self::BORK(ra, rb, rc) => write!(f, "BORK rA({}), rB({}), rC({})", *ra, *rb, *rc),
+            Self::BOR(ra, rb, rc) => write!(f, "BOR rA({}), rB({}), rC({})", *ra, *rb, *rc),
+            Self::BXORK(ra, rb, rc) => write!(f, "BXORK rA({}), rB({}), rC({})", *ra, *rb, *rc),
+            Self::BXOR(ra, rb, rc) => write!(f, "BXOR rA({}), rB({}), rC({})", *ra, *rb, *rc),
+            Self::EQI(ra, rb, k) => write!(f, "EQI rA({}) sB({}) k({})", ra, rb, k),
+            Self::EQ(ra, rb, k) => write!(f, "EQ rA({}) rB({}) k({})", ra, rb, k),
+            Self::EQK(ra, rb, k) => write!(f, "EQK rA({}) rB({}) k({})", ra, rb, k),
+            Self::LT(ra, rb, k) => write!(f, "LT rA({}) rB({}) k({})", ra, rb, k),
+            Self::LE(ra, rb, k) => write!(f, "LE rA({}) rB({}) k({})", ra, rb, k),
+            Self::LTI(ra, rb, k) => write!(f, "LTI rA({}) rB({}) k({})", ra, rb, k),
+            Self::LEI(ra, rb, k) => write!(f, "LEI rA({}) rB({}) k({})", ra, rb, k),
+            Self::GTI(ra, rb, k) => write!(f, "GTI rA({}) rB({}) k({})", ra, rb, k),
+            Self::GEI(ra, rb, k) => write!(f, "GEI rA({}) rB({}) k({})", ra, rb, k),
         }
     }
 }

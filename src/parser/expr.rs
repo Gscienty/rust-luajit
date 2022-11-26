@@ -122,6 +122,14 @@ impl Expr {
         }
     }
 
+    pub(super) fn jmp(pc: usize) -> Self {
+        Expr {
+            value: ExprValue::Jump(pc),
+            true_jumpto: None,
+            false_jumpto: None,
+        }
+    }
+
     pub(super) fn k(idx: usize) -> Self {
         Expr {
             value: ExprValue::K(idx),
@@ -139,6 +147,22 @@ impl Expr {
 
     pub(super) fn inreg(&self) -> bool {
         matches!(self.value, ExprValue::Nonreloc(_) | ExprValue::Reloc(_))
+    }
+
+    pub(super) fn tj(mut self, tj: Option<usize>) -> Self {
+        self.true_jumpto = tj;
+
+        self
+    }
+
+    pub(super) fn fj(mut self, tf: Option<usize>) -> Self {
+        self.false_jumpto = tf;
+
+        self
+    }
+
+    pub(super) fn hasjump(&self) -> bool {
+        self.true_jumpto != self.false_jumpto
     }
 }
 
@@ -179,7 +203,8 @@ mod tests {
         log::set_logger(&Logger {}).unwrap();
         log::set_max_level(log::LevelFilter::Debug);
 
-        let mut p = Parser::new("local a = 'a'..'b'..'c'..'d' + 'e' .. 'f'");
+        let mut p =
+            Parser::new("local a = ('a' == 'b') + ('a'..'b') + 'c'..'d' + 'e' .. 'f' .. 'g'");
 
         assert!(p.parse().is_ok());
 

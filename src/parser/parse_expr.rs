@@ -52,7 +52,9 @@ impl<'s, 't, 'v> ParseExpr<'s, 't, 'v> {
     pub(super) fn listfield_exp(&mut self) -> Result<(), ParseErr> {
         log::debug!("parse listfield_exp");
 
-        self.expr_exp()
+        self.expr_exp()?;
+
+        Ok(())
     }
 
     // field_exp ::= listfield_exp | recfield_exp
@@ -131,12 +133,7 @@ impl<'s, 't, 'v> ParseExpr<'s, 't, 'v> {
 
                 return Ok(Expr::todo());
             }
-            _ => {
-                // parse suffixed_exp
-                self.suffixed_exp()?;
-
-                return Ok(Expr::todo());
-            }
+            _ => return self.suffixed_exp(),
         };
         self.p.parse_lex().skip();
 
@@ -175,12 +172,12 @@ impl<'s, 't, 'v> ParseExpr<'s, 't, 'v> {
         Ok((binop, exp))
     }
 
-    pub(super) fn expr_exp(&mut self) -> Result<(), ParseErr> {
+    pub(super) fn expr_exp(&mut self) -> Result<Expr, ParseErr> {
         log::debug!("parse expr_exp");
 
-        self.sub_exp(BinOpr::INIT_PRI)?;
+        let (_, exp) = self.sub_exp(BinOpr::INIT_PRI)?;
 
-        Ok(())
+        Ok(exp)
     }
 
     // exprlist_exp -> expr { `,` expr }
@@ -205,7 +202,7 @@ impl<'s, 't, 'v> ParseExpr<'s, 't, 'v> {
     }
 
     // primary_exp ::= name | `(` exp `)`
-    pub(super) fn primary_exp(&mut self) -> Result<(), ParseErr> {
+    pub(super) fn primary_exp(&mut self) -> Result<Expr, ParseErr> {
         log::debug!("parse primary_exp");
 
         match self.p.lex(|x| x.token.clone()) {
@@ -213,17 +210,22 @@ impl<'s, 't, 'v> ParseExpr<'s, 't, 'v> {
                 // parse `(`
                 self.p.parse_lex().skip();
                 // parse exp
-                self.expr_exp()?;
+                let exp = self.expr_exp()?;
                 // parse `)`
                 match_token!(consume: self.p, Token::Operator(')'))?;
+
+                // TODO discharge vars
+
+                Ok(exp)
             }
             Token::Name(_name) => {
                 // parse name
                 self.p.parse_lex().skip();
+
+                Ok(Expr::todo())
             }
-            _ => return Err(ParseErr::BadUsage),
+            _ => Err(ParseErr::BadUsage),
         }
-        Ok(())
     }
 
     // funcargs_exp ::= ( `(` [ exprlist_exp ] `)` | constructor_exp | string )
@@ -252,11 +254,11 @@ impl<'s, 't, 'v> ParseExpr<'s, 't, 'v> {
     }
 
     // suffixed_exp ::= primary_exp { `.` name | `[` exp `]` | `:` name funcargs_exp | funcargs_exp }
-    pub(super) fn suffixed_exp(&mut self) -> Result<(), ParseErr> {
+    pub(super) fn suffixed_exp(&mut self) -> Result<Expr, ParseErr> {
         log::debug!("parse suffixed_exp");
 
         // parse primary_exp
-        self.primary_exp()?;
+        let exp = self.primary_exp()?;
 
         loop {
             match self.p.lex(|x| x.token.clone()) {
@@ -286,7 +288,7 @@ impl<'s, 't, 'v> ParseExpr<'s, 't, 'v> {
                     // parse funcargs_exp
                     self.funcargs_exp()?;
                 }
-                _ => break Ok(()),
+                _ => break Ok(exp),
             }
         }
     }

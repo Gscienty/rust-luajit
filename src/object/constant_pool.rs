@@ -2,6 +2,8 @@ pub(crate) enum ConstantValue {
     Float(f64),
     Integer(i64),
     String(String),
+    Bool(bool),
+    Nil,
 }
 
 pub(crate) struct ConstantPool {
@@ -29,6 +31,18 @@ impl ConstantPool {
 
     pub(crate) fn adds(&mut self, v: &str) -> usize {
         self.constants.push(ConstantValue::String(v.to_string()));
+
+        self.constants.len() - 1
+    }
+
+    pub(crate) fn addb(&mut self, v: bool) -> usize {
+        self.constants.push(ConstantValue::Bool(v));
+
+        self.constants.len() - 1
+    }
+
+    pub(crate) fn addn(&mut self) -> usize {
+        self.constants.push(ConstantValue::Nil);
 
         self.constants.len() - 1
     }

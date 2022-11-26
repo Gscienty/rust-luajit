@@ -179,6 +179,102 @@ impl<'s> ParseCode<'s> {
         self.p.emit(InterCode::SHR(255, r1 as u8, r2 as u8))
     }
 
+    pub(super) fn emit_band(&mut self, r1: usize, r2: usize) -> usize {
+        log::debug!("emit BAND 255, {}, {}", r1, r2);
+
+        self.p.emit(InterCode::BAND(255, r1 as u8, r2 as u8))
+    }
+
+    pub(super) fn emit_bor(&mut self, r1: usize, r2: usize) -> usize {
+        log::debug!("emit BOR 255, {}, {}", r1, r2);
+
+        self.p.emit(InterCode::BOR(255, r1 as u8, r2 as u8))
+    }
+
+    pub(super) fn emit_bxor(&mut self, r1: usize, r2: usize) -> usize {
+        log::debug!("emit BXOR 255, {}, {}", r1, r2);
+
+        self.p.emit(InterCode::BXOR(255, r1 as u8, r2 as u8))
+    }
+
+    pub(super) fn emit_bandk(&mut self, r1: usize, k: usize) -> usize {
+        log::debug!("emit BANDK 255, {}, {}", r1, k);
+
+        self.p.emit(InterCode::BANDK(255, r1 as u8, k as u8))
+    }
+
+    pub(super) fn emit_bork(&mut self, r1: usize, k: usize) -> usize {
+        log::debug!("emit BORK 255, {}, {}", r1, k);
+
+        self.p.emit(InterCode::BORK(255, r1 as u8, k as u8))
+    }
+
+    pub(super) fn emit_bxork(&mut self, r1: usize, k: usize) -> usize {
+        log::debug!("emit BXORK 255, {}, {}", r1, k);
+
+        self.p.emit(InterCode::BXORK(255, r1 as u8, k as u8))
+    }
+
+    pub(super) fn emit_eqi(&mut self, reg: usize, sb: u32, k: bool) -> usize {
+        log::debug!("emit EQI {}, {}, {}", reg, sb, k);
+
+        self.p.emit(InterCode::EQI(reg as u8, sb, k))
+    }
+
+    pub(super) fn emit_eq(&mut self, ra: usize, rb: usize, k: bool) -> usize {
+        log::debug!("emit EQ {}, {}, {}", ra, rb, k);
+
+        self.p.emit(InterCode::EQ(ra as u8, rb as u8, k))
+    }
+
+    pub(super) fn emit_eqk(&mut self, ra: usize, rb: usize, k: bool) -> usize {
+        log::debug!("emit EQK {}, {}, {}", ra, rb, k);
+
+        self.p.emit(InterCode::EQK(ra as u8, rb as u8, k))
+    }
+
+    pub(super) fn emit_jmp(&mut self) -> usize {
+        log::debug!("emit JMP NONE");
+
+        self.p.emit(InterCode::JMP(None))
+    }
+
+    pub(super) fn emit_lt(&mut self, ra: usize, rb: usize, k: bool) -> usize {
+        log::debug!("emit LT {}, {}, {}", ra, rb, k);
+
+        self.p.emit(InterCode::LT(ra as u8, rb as u8, k))
+    }
+
+    pub(super) fn emit_le(&mut self, ra: usize, rb: usize, k: bool) -> usize {
+        log::debug!("emit LE {}, {}, {}", ra, rb, k);
+
+        self.p.emit(InterCode::LE(ra as u8, rb as u8, k))
+    }
+
+    pub(super) fn emit_lti(&mut self, ra: usize, rb: u32, k: bool) -> usize {
+        log::debug!("emit LTI {}, {}, {}", ra, rb, k);
+
+        self.p.emit(InterCode::LTI(ra as u8, rb, k))
+    }
+
+    pub(super) fn emit_lei(&mut self, ra: usize, rb: u32, k: bool) -> usize {
+        log::debug!("emit LEI {}, {}, {}", ra, rb, k);
+
+        self.p.emit(InterCode::LEI(ra as u8, rb, k))
+    }
+
+    pub(super) fn emit_gti(&mut self, ra: usize, rb: u32, k: bool) -> usize {
+        log::debug!("emit GTI {}, {}, {}", ra, rb, k);
+
+        self.p.emit(InterCode::GTI(ra as u8, rb, k))
+    }
+
+    pub(super) fn emit_gei(&mut self, ra: usize, rb: u32, k: bool) -> usize {
+        log::debug!("emit GEI {}, {}, {}", ra, rb, k);
+
+        self.p.emit(InterCode::GEI(ra as u8, rb, k))
+    }
+
     pub(super) fn set_ra(&mut self, pc: usize, ra: usize) {
         let ra = ra as u8;
 
@@ -204,6 +300,12 @@ impl<'s> ParseCode<'s> {
                 InterCode::SHL(_, rb, rc) => InterCode::SHL(ra, rb, rc),
                 InterCode::SHRI(_, rb, rc) => InterCode::SHRI(ra, rb, rc),
                 InterCode::SHR(_, rb, rc) => InterCode::SHR(ra, rb, rc),
+                InterCode::BAND(_, rb, rc) => InterCode::BAND(ra, rb, rc),
+                InterCode::BANDK(_, rb, rc) => InterCode::BANDK(ra, rb, rc),
+                InterCode::BOR(_, rb, rc) => InterCode::BOR(ra, rb, rc),
+                InterCode::BORK(_, rb, rc) => InterCode::BORK(ra, rb, rc),
+                InterCode::BXOR(_, rb, rc) => InterCode::BXOR(ra, rb, rc),
+                InterCode::BXORK(_, rb, rc) => InterCode::BXORK(ra, rb, rc),
                 _ => *c,
             }
         });
@@ -213,6 +315,15 @@ impl<'s> ParseCode<'s> {
         self.p.modify_code(pc, |c| {
             *c = match *c {
                 InterCode::CONCAT(ra, _) => InterCode::CONCAT(ra, rb),
+                _ => *c,
+            }
+        })
+    }
+
+    pub(super) fn set_sj(&mut self, pc: usize, sj: usize) {
+        self.p.modify_code(pc, |c| {
+            *c = match *c {
+                InterCode::JMP(_) => InterCode::JMP(Some(sj as u32)),
                 _ => *c,
             }
         })
@@ -240,6 +351,9 @@ impl<'s> ParseCode<'s> {
             BinOpr::POW => self.emit_pow(r1, r2),
             BinOpr::SHL => self.emit_shl(r1, r2),
             BinOpr::SHR => self.emit_shr(r1, r2),
+            BinOpr::BAND => self.emit_band(r1, r2),
+            BinOpr::BOR => self.emit_bor(r1, r2),
+            BinOpr::BXOR => self.emit_bxor(r1, r2),
             _ => return Err(ParseErr::BadUsage),
         })
     }
@@ -255,6 +369,9 @@ impl<'s> ParseCode<'s> {
             BinOpr::IDIV => self.emit_idivk(reg, k),
             BinOpr::MOD => self.emit_modk(reg, k),
             BinOpr::POW => self.emit_powk(reg, k),
+            BinOpr::BAND => self.emit_bandk(reg, k),
+            BinOpr::BOR => self.emit_bork(reg, k),
+            BinOpr::BXOR => self.emit_bxork(reg, k),
             _ => return Err(ParseErr::BadUsage),
         })
     }
@@ -272,6 +389,9 @@ impl<'s> ParseCode<'s> {
             BinOpr::POW => v1.pow(v2 as u32),
             BinOpr::SHL => v1 << v2,
             BinOpr::SHR => v1 >> v2,
+            BinOpr::BAND => v1 & v2,
+            BinOpr::BOR => v1 | v2,
+            BinOpr::BXOR => v1 ^ v2,
             _ => return Err(ParseErr::BadUsage),
         }))
     }
@@ -304,16 +424,14 @@ impl<'s> ParseCode<'s> {
 
                 Ok(e2)
             }
-            BinOpr::EQ => {
-                // TODO
-
-                Ok(e2)
+            BinOpr::EQ | BinOpr::NE => {
+                if e1.inreg() {
+                    self.cmp_eq(op, e1.clone(), e2.clone())
+                } else {
+                    self.cmp_eq(op, e2.clone(), e1.clone())
+                }
             }
-            BinOpr::NE => {
-                // TODO
-
-                Ok(e2)
-            }
+            BinOpr::LT | BinOpr::LE | BinOpr::GT | BinOpr::GE => self.cmp_order(op, e1, e2),
             BinOpr::CONCAT => {
                 log::debug!("parse posfix concat");
                 let e2 = self.p.parse_reg().exp_tonextreg(e2)?;
@@ -352,7 +470,10 @@ impl<'s> ParseCode<'s> {
             | BinOpr::MOD
             | BinOpr::POW
             | BinOpr::SHL
-            | BinOpr::SHR => self.arith(op, e1, e2),
+            | BinOpr::SHR
+            | BinOpr::BAND
+            | BinOpr::BOR
+            | BinOpr::BXOR => self.arith(op, e1, e2),
 
             _ => Err(ParseErr::BadUsage),
         }
@@ -362,7 +483,6 @@ impl<'s> ParseCode<'s> {
         log::debug!("parse arith_inreg op: {}", op);
 
         let allowimm = matches!(op, BinOpr::ADD | BinOpr::SHL | BinOpr::SHR);
-
         let allowk = matches!(
             op,
             BinOpr::ADD
@@ -372,6 +492,9 @@ impl<'s> ParseCode<'s> {
                 | BinOpr::SUB
                 | BinOpr::MOD
                 | BinOpr::POW
+                | BinOpr::BAND
+                | BinOpr::BOR
+                | BinOpr::BXOR
         );
 
         match e2.value {
@@ -385,16 +508,8 @@ impl<'s> ParseCode<'s> {
 
                 Ok(Expr::reloc(pc))
             }
-            ExprValue::Integer(value) => {
-                let e2 = self.p.parse_reg().int_tok(value)?;
-                self.arith_inreg(op, e1, e2)
-            }
-            ExprValue::Float(value) => {
-                let e2 = self.p.parse_reg().float_tok(value)?;
-                self.arith_inreg(op, e1, e2)
-            }
-            ExprValue::String(value) => {
-                let e2 = self.p.parse_reg().str_tok(&value)?;
+            ExprValue::Integer(_) | ExprValue::Float(_) | ExprValue::String(_) => {
+                let e2 = self.p.parse_reg().exp_tok(e2)?;
                 self.arith_inreg(op, e1, e2)
             }
             ExprValue::K(k) if allowk => {
@@ -412,7 +527,10 @@ impl<'s> ParseCode<'s> {
     fn arith(&mut self, op: BinOpr, e1: Expr, e2: Expr) -> Result<Expr, ParseErr> {
         log::debug!("parse arith op: {}", op);
 
-        let swapable = matches!(op, BinOpr::ADD | BinOpr::MUL);
+        let swapable = matches!(
+            op,
+            BinOpr::ADD | BinOpr::MUL | BinOpr::BAND | BinOpr::BOR | BinOpr::BXOR
+        );
         if !e1.inreg() && !e2.inreg() {
             if e1.numeric() && e2.numeric() {
                 log::debug!("parse arith op: {}, all not inreg, all immediate", op);
@@ -480,7 +598,7 @@ impl<'s> ParseCode<'s> {
     pub(crate) fn negate_cond(&mut self, _pc: usize) {}
 
     fn get_jump(&self, pc: usize) -> Option<usize> {
-        if let Some(InterCode::JMP(offset)) = self.p.get_code(pc) {
+        if let Some(InterCode::JMP(Some(offset))) = self.p.get_code(pc) {
             Some(pc + 1 + *offset as usize)
         } else {
             None
@@ -490,7 +608,7 @@ impl<'s> ParseCode<'s> {
     fn fix_jump(&mut self, pc: usize, dpc: usize) -> Result<(), ParseErr> {
         let offset = dpc - (pc + 1);
         self.p
-            .modify_code(pc, |c| *c = InterCode::JMP(offset as u32));
+            .modify_code(pc, |c| *c = InterCode::JMP(Some(offset as u32)));
 
         Ok(())
     }
@@ -500,6 +618,8 @@ impl<'s> ParseCode<'s> {
         l1: &mut Option<usize>,
         l2: Option<usize>,
     ) -> Result<(), ParseErr> {
+        log::debug!("parse concat_jumplist");
+
         if l2.is_none() {
             Ok(())
         } else if l1.is_none() {
@@ -518,5 +638,103 @@ impl<'s> ParseCode<'s> {
 
             Ok(())
         }
+    }
+
+    fn cmp_eq(&mut self, op: BinOpr, e1: Expr, e2: Expr) -> Result<Expr, ParseErr> {
+        log::debug!("parse cmp eq: {}", op);
+
+        let e1 = self.p.parse_reg().exp_toanyreg(e1)?;
+        let ra = self.p.parse_reg().locreg(e1)?;
+        let k = matches!(op, BinOpr::EQ);
+
+        match e2.value {
+            ExprValue::Integer(value) if 0 <= value && value as u32 <= codelimit::MAX_SBX => {
+                self.emit_eqi(ra, value as u32, k);
+                self.p.free_reg(ra)?;
+            }
+            _ => {
+                let e2 = self.p.parse_reg().exp_tokreg(e2)?;
+                match e2.value {
+                    ExprValue::Nonreloc(rb) => {
+                        self.emit_eq(ra, rb, k);
+                        if ra < rb {
+                            self.p.free_reg(rb)?;
+                            self.p.free_reg(ra)?;
+                        } else {
+                            self.p.free_reg(ra)?;
+                            self.p.free_reg(rb)?;
+                        }
+                    }
+                    ExprValue::K(rb) => {
+                        self.p.free_reg(ra)?;
+                        self.emit_eqk(ra, rb, k);
+                    }
+                    _ => return Err(ParseErr::BadUsage),
+                }
+            }
+        };
+
+        Ok(Expr::jmp(self.emit_jmp()))
+    }
+
+    fn cmp_order(&mut self, op: BinOpr, e1: Expr, e2: Expr) -> Result<Expr, ParseErr> {
+        let (op, e1, e2) = match op {
+            BinOpr::LT | BinOpr::LE => (op, e1, e2),
+            BinOpr::GE => (BinOpr::LE, e2, e1),
+            BinOpr::GT => (BinOpr::GT, e2, e1),
+            _ => return Err(ParseErr::BadUsage),
+        };
+
+        if matches!(e2.value, ExprValue::Integer(v) if 0 <= v && v as u32 <= codelimit::MAX_SBX) {
+            let e1 = self.p.parse_reg().exp_toanyreg(e1)?;
+            let r1 = self.p.parse_reg().locreg(e1)?;
+            let imm = match e2.value {
+                ExprValue::Integer(v) => v,
+                _ => unreachable!(),
+            };
+
+            match op {
+                BinOpr::LT => self.emit_lti(r1, imm as u32, true),
+                BinOpr::LE => self.emit_lei(r1, imm as u32, true),
+                _ => unreachable!(),
+            };
+            self.p.free_reg(r1)?;
+        } else if matches!(e1.value, ExprValue::Integer(v) if 0 <= v && v as u32 <= codelimit::MAX_SBX)
+        {
+            let e2 = self.p.parse_reg().exp_toanyreg(e2)?;
+            let r2 = self.p.parse_reg().locreg(e2)?;
+            let imm = match e1.value {
+                ExprValue::Integer(v) => v,
+                _ => unreachable!(),
+            };
+
+            match op {
+                BinOpr::LT => self.emit_gti(r2, imm as u32, true),
+                BinOpr::LE => self.emit_gei(r2, imm as u32, true),
+                _ => unreachable!(),
+            };
+            self.p.free_reg(r2)?;
+        } else {
+            let e1 = self.p.parse_reg().exp_toanyreg(e1)?;
+            let e2 = self.p.parse_reg().exp_toanyreg(e2)?;
+            let r1 = self.p.parse_reg().locreg(e1)?;
+            let r2 = self.p.parse_reg().locreg(e2)?;
+
+            match op {
+                BinOpr::LT => self.emit_lt(r1, r2, true),
+                BinOpr::LE => self.emit_le(r1, r2, true),
+                _ => unreachable!(),
+            };
+
+            if r1 < r2 {
+                self.p.free_reg(r2)?;
+                self.p.free_reg(r1)?;
+            } else {
+                self.p.free_reg(r1)?;
+                self.p.free_reg(r2)?;
+            }
+        }
+
+        Ok(Expr::jmp(self.emit_jmp()))
     }
 }
