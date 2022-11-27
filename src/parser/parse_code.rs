@@ -35,6 +35,12 @@ impl<'s> ParseCode<'s> {
         }
     }
 
+    pub(super) fn emit_lfalseskip(&mut self, reg: usize) -> usize {
+        log::debug!("emit LFALSESKIP {}", reg);
+
+        self.p.emit(InterCode::LFALSESKIP(reg as u8))
+    }
+
     pub(super) fn emit_loadint(&mut self, reg: usize, value: i64) -> usize {
         log::debug!("emit LOADINT {}, {}", reg, value);
 
@@ -275,6 +281,12 @@ impl<'s> ParseCode<'s> {
         self.p.emit(InterCode::GEI(ra as u8, rb, k))
     }
 
+    pub(super) fn emit_testset(&mut self, rb: usize, k: bool) -> usize {
+        log::debug!("emit TESTSET 255, {}, {}", rb, k);
+
+        self.p.emit(InterCode::TESTSET(255, rb as u8, k))
+    }
+
     pub(super) fn set_ra(&mut self, pc: usize, ra: usize) {
         let ra = ra as u8;
 
@@ -327,6 +339,24 @@ impl<'s> ParseCode<'s> {
                 _ => *c,
             }
         })
+    }
+
+    pub(crate) fn negate_cond(&mut self, pc: usize) {
+        let (pc, _) = self.p.get_ctrljump(pc);
+        self.p.modify_code(pc, |c| {
+            *c = match *c {
+                InterCode::EQI(ra, rb, k) => InterCode::EQI(ra, rb, !k),
+                InterCode::EQ(ra, rb, k) => InterCode::EQ(ra, rb, !k),
+                InterCode::EQK(ra, rb, k) => InterCode::EQK(ra, rb, !k),
+                InterCode::LT(ra, rb, k) => InterCode::LT(ra, rb, !k),
+                InterCode::LE(ra, rb, k) => InterCode::LE(ra, rb, !k),
+                InterCode::LTI(ra, rb, k) => InterCode::LTI(ra, rb, !k),
+                InterCode::LEI(ra, rb, k) => InterCode::LEI(ra, rb, !k),
+                InterCode::GTI(ra, rb, k) => InterCode::GTI(ra, rb, !k),
+                InterCode::GEI(ra, rb, k) => InterCode::GEI(ra, rb, !k),
+                _ => *c,
+            }
+        });
     }
 
     fn arith_imm(&mut self, op: BinOpr, reg: usize, imm: u8) -> Result<usize, ParseErr> {
@@ -415,12 +445,14 @@ impl<'s> ParseCode<'s> {
         log::debug!("parse posfix, op: {}", op);
         match op {
             BinOpr::AND => {
-                // TODO
+                let mut e2 = e2;
+                self.jump_concatlist(&mut e2.false_jumpto, e1.false_jumpto)?;
 
                 Ok(e2)
             }
             BinOpr::OR => {
-                // TODO
+                let mut e2 = e2;
+                self.jump_concatlist(&mut e2.true_jumpto, e1.true_jumpto)?;
 
                 Ok(e2)
             }
@@ -595,25 +627,68 @@ impl<'s> ParseCode<'s> {
         }
     }
 
-    pub(crate) fn negate_cond(&mut self, _pc: usize) {}
+    pub(super) fn jump_patchtohere(&mut self, list: Option<usize>) -> Result<(), ParseErr> {
+        let here = self.p.mark_label();
+        self.jump_patchlistaux(list, Some(here), None, Some(here))
+    }
 
-    fn get_jump(&self, pc: usize) -> Option<usize> {
-        if let Some(InterCode::JMP(Some(offset))) = self.p.get_code(pc) {
-            Some(pc + 1 + *offset as usize)
-        } else {
-            None
+    pub(super) fn patch_testreg(&mut self, node: usize, reg: Option<usize>) -> bool {
+        let (pc, ins) = self.p.get_ctrljump(node);
+        let ins = match ins {
+            Some(ins) => Some(*ins),
+            _ => None,
+        };
+
+        match ins.clone() {
+            Some(InterCode::TESTSET(_, rb, k)) => {
+                match reg {
+                    Some(reg) if reg != rb as usize => self
+                        .p
+                        .modify_code(pc, |c| *c = InterCode::TESTSET(reg as u8, rb, k)),
+
+                    _ => self.p.modify_code(pc, |c| *c = InterCode::TEST(rb, k)),
+                }
+                true
+            }
+            _ => false,
         }
     }
 
-    fn fix_jump(&mut self, pc: usize, dpc: usize) -> Result<(), ParseErr> {
+    pub(super) fn jump_patchlistaux(
+        &mut self,
+        list: Option<usize>,
+        vtgt: Option<usize>,
+        reg: Option<usize>,
+        dtgt: Option<usize>,
+    ) -> Result<(), ParseErr> {
+        let mut list = list;
+
+        while let Some(pc) = list {
+            let next = self.p.get_jump(pc);
+
+            if self.patch_testreg(pc, reg) {
+                if let Some(vtgt) = vtgt {
+                    self.jump_patch(pc, vtgt)?;
+                }
+            } else {
+                if let Some(dtgt) = dtgt {
+                    self.jump_patch(pc, dtgt)?;
+                }
+            }
+
+            list = next;
+        }
+        Ok(())
+    }
+
+    fn jump_patch(&mut self, pc: usize, dpc: usize) -> Result<(), ParseErr> {
         let offset = dpc - (pc + 1);
-        self.p
-            .modify_code(pc, |c| *c = InterCode::JMP(Some(offset as u32)));
+        self.set_sj(pc, offset);
 
         Ok(())
     }
 
-    pub(super) fn concat_jumplist(
+    pub(super) fn jump_concatlist(
         &mut self,
         l1: &mut Option<usize>,
         l2: Option<usize>,
@@ -628,15 +703,89 @@ impl<'s> ParseCode<'s> {
         } else {
             let mut list = l1.unwrap();
             loop {
-                if let Some(next) = self.get_jump(list) {
+                if let Some(next) = self.p.get_jump(list) {
                     list = next
                 } else {
                     break;
                 }
             }
-            self.fix_jump(list, l2.unwrap())?;
+            self.jump_patch(list, l2.unwrap())?;
 
             Ok(())
+        }
+    }
+
+    fn jump_oncond(&mut self, exp: Expr, cond: bool) -> Result<(usize, Expr), ParseErr> {
+        match exp.value {
+            ExprValue::Reloc(pc) => match self.p.get_code(pc).and_then(|c| Some(*c)) {
+                Some(InterCode::NOT(_, rb)) => {
+                    self.p.remove_lastcode();
+
+                    self.emit_testset(rb as usize, !cond);
+                    return Ok((self.emit_jmp(), exp));
+                }
+                _ => {}
+            },
+            _ => {}
+        };
+
+        let exp = self.p.parse_reg().discharge_toanyreg(exp)?;
+        self.p.parse_reg().exp_free(exp.clone())?;
+        let reg = self.p.parse_reg().locreg(exp.clone())?;
+
+        self.emit_testset(reg, cond);
+        Ok((self.emit_jmp(), exp))
+    }
+
+    pub(super) fn goiftrue(&mut self, exp: Expr) -> Result<Expr, ParseErr> {
+        let mut exp = exp;
+
+        match exp.value {
+            ExprValue::Jump(pc) => {
+                self.negate_cond(pc);
+
+                self.jump_concatlist(&mut exp.false_jumpto, Some(pc))?;
+                self.jump_patchtohere(exp.true_jumpto)?;
+                Ok(exp.tj(None))
+            }
+            ExprValue::K(_)
+            | ExprValue::Float(_)
+            | ExprValue::Integer(_)
+            | ExprValue::String(_)
+            | ExprValue::Bool(true) => {
+                self.jump_concatlist(&mut exp.false_jumpto, None)?;
+                self.jump_patchtohere(exp.true_jumpto)?;
+                Ok(exp.tj(None))
+            }
+            _ => {
+                let (pc, mut exp) = self.jump_oncond(exp, false)?;
+                self.jump_concatlist(&mut exp.false_jumpto, Some(pc))?;
+                self.jump_patchtohere(exp.true_jumpto)?;
+                Ok(exp.tj(None))
+            }
+        }
+    }
+
+    pub(super) fn goiffalse(&mut self, exp: Expr) -> Result<Expr, ParseErr> {
+        let mut exp = exp;
+
+        match exp.value {
+            ExprValue::Jump(pc) => {
+                self.jump_concatlist(&mut exp.true_jumpto, Some(pc))?;
+                self.jump_patchtohere(exp.false_jumpto)?;
+                Ok(exp.fj(None))
+            }
+            ExprValue::Nil | ExprValue::Bool(false) => {
+                self.jump_concatlist(&mut exp.true_jumpto, None)?;
+                self.jump_patchtohere(exp.false_jumpto)?;
+                Ok(exp.fj(None))
+            }
+            _ => {
+                let (pc, mut exp) = self.jump_oncond(exp, true)?;
+                self.jump_concatlist(&mut exp.true_jumpto, Some(pc))?;
+                self.jump_patchtohere(exp.false_jumpto)?;
+                Ok(exp.fj(None))
+            }
         }
     }
 

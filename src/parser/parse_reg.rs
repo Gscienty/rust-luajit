@@ -1,4 +1,4 @@
-use crate::code::codelimit;
+use crate::code::{codelimit, InterCode};
 
 use super::{BinOpr, Expr, ExprValue, ParseErr, Parser};
 
@@ -74,8 +74,8 @@ impl<'s> ParseReg<'s> {
         // TODO
 
         match op {
-            BinOpr::AND => Ok(Expr::todo()),
-            BinOpr::OR => Ok(Expr::todo()),
+            BinOpr::AND => self.p.parse_code().goiftrue(exp),
+            BinOpr::OR => self.p.parse_code().goiffalse(exp),
             BinOpr::ADD
             | BinOpr::SUB
             | BinOpr::MUL
@@ -195,21 +195,62 @@ impl<'s> ParseReg<'s> {
         }
     }
 
+    // why use mut?
+    fn need_value(&self, list: Option<usize>) -> bool {
+        let mut list = list;
+        while let Some(pc) = list {
+            let (_, ins) = self.p.get_ctrljump(pc);
+            match ins {
+                Some(ins) if !matches!(ins, InterCode::TESTSET(_, _, _)) => return true,
+                _ => list = self.p.get_jump(pc),
+            }
+        }
+
+        false
+    }
+
     pub(super) fn exp_toreg(&mut self, exp: Expr, reg: usize) -> Result<Expr, ParseErr> {
         let mut exp = self.discharge_toreg(exp, reg)?;
         match exp.value {
             ExprValue::Jump(pc) => self
                 .p
                 .parse_code()
-                .concat_jumplist(&mut exp.true_jumpto, Some(pc))?,
+                .jump_concatlist(&mut exp.true_jumpto, Some(pc))?,
             _ => {}
         };
 
         if exp.hasjump() {
-            // TODO fixjump
+            let mut pf = None;
+            let mut pt = None;
+            if self.need_value(exp.true_jumpto) || self.need_value(exp.false_jumpto) {
+                let fj = match exp.value {
+                    ExprValue::Jump(_) => None,
+                    _ => Some(self.p.parse_code().emit_jmp()),
+                };
+
+                pf = Some(self.p.parse_code().emit_lfalseskip(reg));
+                pt = Some(self.p.parse_code().emit_loadbool(reg, true));
+
+                self.p.parse_code().jump_patchtohere(fj)?;
+            }
+
+            let final_pc = self.p.mark_label();
+
+            self.p.parse_code().jump_patchlistaux(
+                exp.false_jumpto,
+                Some(final_pc),
+                Some(reg),
+                pf,
+            )?;
+            self.p.parse_code().jump_patchlistaux(
+                exp.true_jumpto,
+                Some(final_pc),
+                Some(reg),
+                pt,
+            )?;
         }
 
-        Ok(Expr::nonreloc(reg).tj(exp.true_jumpto).fj(exp.false_jumpto))
+        Ok(Expr::nonreloc(reg))
     }
 
     pub(super) fn exp_tonextreg(&mut self, exp: Expr) -> Result<Expr, ParseErr> {

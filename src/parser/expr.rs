@@ -203,8 +203,9 @@ mod tests {
         log::set_logger(&Logger {}).unwrap();
         log::set_max_level(log::LevelFilter::Debug);
 
-        let mut p =
-            Parser::new("local a = ('a' == 'b') + ('a'..'b') + 'c'..'d' + 'e' .. 'f' .. 'g'");
+        let mut p = Parser::new(
+            "local a = ('a' == 'b' or 1 < 2) + ('a'..'b') + 'c'..'d' + 'e' .. 'f' .. 'g'",
+        );
 
         assert!(p.parse().is_ok());
 

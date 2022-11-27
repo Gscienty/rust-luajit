@@ -25,6 +25,7 @@ pub(crate) struct Parser {
     label: Vec<LabelDesc>,
 
     codes: Vec<InterCode>,
+    last_target: usize,
 
     pub(super) freereg: usize,
     pub(super) constant_pool: Rc<RefCell<ConstantPool>>,
@@ -47,6 +48,7 @@ impl Parser {
             label: Vec::new(),
 
             codes: Vec::new(),
+            last_target: 0,
 
             freereg: 0,
             constant_pool: Rc::new(RefCell::new(ConstantPool::new())),
@@ -72,6 +74,10 @@ impl Parser {
         self.codes.len() - 1
     }
 
+    pub(super) fn remove_lastcode(&mut self) {
+        self.codes.pop();
+    }
+
     pub(super) fn modify_code<F>(&mut self, pc: usize, f: F)
     where
         F: FnOnce(&mut InterCode),
@@ -79,6 +85,12 @@ impl Parser {
         if let Some(code) = self.codes.get_mut(pc) {
             f(code)
         }
+    }
+
+    pub(super) fn mark_label(&mut self) -> usize {
+        self.last_target = self.get_codelen();
+
+        self.get_codelen()
     }
 
     pub(super) fn get_code(&self, pc: usize) -> Option<&InterCode> {
@@ -149,6 +161,22 @@ impl Parser {
 
     pub(super) fn gotocnt(&self) -> usize {
         self.goto.len()
+    }
+
+    pub(super) fn get_jump(&self, pc: usize) -> Option<usize> {
+        if let Some(InterCode::JMP(Some(offset))) = self.get_code(pc) {
+            Some(pc + 1 + *offset as usize)
+        } else {
+            None
+        }
+    }
+
+    pub(super) fn get_ctrljump(&self, pc: usize) -> (usize, Option<&InterCode>) {
+        match self.codes.get(pc) {
+            Some(ins) if ins.test_mode() => (pc - 1, self.codes.get(pc - 1)),
+            Some(ins) => (pc, Some(ins)),
+            _ => (pc, None),
+        }
     }
 
     pub(super) fn parse_lex(&mut self) -> ParseLex {
