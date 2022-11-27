@@ -50,6 +50,15 @@ pub(crate) enum InterCode {
     TEST(u8, bool),        // rA, k; if (not R[rA] == k) then pc++
     TESTSET(u8, u8, bool), // rA, rB, k; if (not R[rA] == k) then pc++ else R[rA] := R[rB]
     NOT(u8, u8),           // rA, rB; R[rA] := not R[rB]
+    UNM(u8, u8),           // rA, rB; R[rA] := -R[rB]
+    BNOT(u8, u8),          // rA, rB; R[rA] := ~R[rB]
+    LEN(u8, u8),           // rA, rB; R[rA] := #R[rB]
+    GETUPVAL(u8, u8),      // rA, rB; R[rA] := U[rB]
+    SETUPVAL(u8, u8),      // rA, rB; U[rB] := R[rA]
+    GETTABUP(u8, u8, u8),  // rA, rB, rC; R[rA] := U[rB][K[rC]]
+    GETI(u8, u8, u8),      // rA, rB, rC; R[rA] := U[rB][rC]
+    GETFIELD(u8, u8, u8),  // rA, rB, rC; R[rA] := R[rB][K[rC]]
+    GETTABLE(u8, u8, u8),  // rA, rB, rC; R[rA] := R[rB][R[rC]]
 }
 
 impl Display for InterCode {
@@ -65,7 +74,7 @@ impl Display for InterCode {
             Self::VARARG(ra, rc) => write!(f, "VARARG rA({}), rC({})", *ra, *rc),
             Self::JMP(sj) => match sj {
                 Some(sj) => write!(f, "JMP sJ({})", *sj),
-                None => write!(f, "JMP NONE"),
+                _ => write!(f, "JMP NONE"),
             },
             Self::MOVE(ra, rb) => write!(f, "MOVE rA({}), rB({})", *ra, *rb),
             Self::CONCAT(ra, rb) => write!(f, "CONCAT rA({}), rB({})", *ra, *rb),
@@ -106,6 +115,15 @@ impl Display for InterCode {
             Self::TEST(ra, k) => write!(f, "TEST rA({}) k({})", *ra, *k),
             Self::TESTSET(ra, rb, k) => write!(f, "TESTSET rA({}) rB({}) k({})", *ra, *rb, *k),
             Self::NOT(ra, rb) => write!(f, "NOT rA({}) rB({})", *ra, *rb),
+            Self::UNM(ra, rb) => write!(f, "UNM rA({}) rB({})", *ra, *rb),
+            Self::BNOT(ra, rb) => write!(f, "BNOT rA({}) rB({})", *ra, *rb),
+            Self::LEN(ra, rb) => write!(f, "LEN rA({}) rB({})", *ra, *rb),
+            Self::GETUPVAL(ra, rb) => write!(f, "GETUPVAL rA({}) rB({})", *ra, *rb),
+            Self::SETUPVAL(ra, rb) => write!(f, "SETUPVAL rA({}) rB({})", *ra, *rb),
+            Self::GETTABUP(ra, rb, rc) => write!(f, "GETTABUP rA({}) rB({}) rC({})", *ra, *rb, *rc),
+            Self::GETI(ra, rb, rc) => write!(f, "GETI rA({}) rB({}) rC({})", *ra, *rb, *rc),
+            Self::GETFIELD(ra, rb, rc) => write!(f, "GETFIELD rA({}) rB({}) rC({})", *ra, *rb, *rc),
+            Self::GETTABLE(ra, rb, rc) => write!(f, "GETTABLE rA({}) rB({}) rC({})", *ra, *rb, *rc),
         }
     }
 }

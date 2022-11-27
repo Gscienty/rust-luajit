@@ -42,6 +42,9 @@ impl<'s> ParseReg<'s> {
     }
 
     pub(super) fn exp_tok(&mut self, exp: Expr) -> Result<Expr, ParseErr> {
+        let tj = exp.true_jumpto;
+        let fj = exp.false_jumpto;
+
         match exp.value {
             ExprValue::Bool(v) => self.btok(v),
             ExprValue::Nil => self.ntok(),
@@ -50,6 +53,7 @@ impl<'s> ParseReg<'s> {
             ExprValue::String(v) => self.stok(v.as_str()),
             _ => Err(ParseErr::BadUsage),
         }
+        .and_then(|exp| Ok(exp.tj(tj).fj(fj)))
     }
 
     pub(super) fn exp_tokreg(&mut self, exp: Expr) -> Result<Expr, ParseErr> {
@@ -71,7 +75,8 @@ impl<'s> ParseReg<'s> {
 
     pub(super) fn infix(&mut self, op: BinOpr, exp: Expr) -> Result<Expr, ParseErr> {
         log::debug!("parse infix, op: {}", op);
-        // TODO
+
+        let exp = self.p.parse_var().discharge_tovar(exp)?;
 
         match op {
             BinOpr::AND => self.p.parse_code().goiftrue(exp),
@@ -99,6 +104,11 @@ impl<'s> ParseReg<'s> {
     }
 
     pub(super) fn discharge_toreg(&mut self, exp: Expr, reg: usize) -> Result<Expr, ParseErr> {
+        let exp = self.p.parse_var().discharge_tovar(exp)?;
+
+        let tj = exp.true_jumpto;
+        let fj = exp.false_jumpto;
+
         match exp.value {
             ExprValue::Nil => {
                 self.p.parse_code().emit_loadnil(reg, 1);
@@ -153,6 +163,7 @@ impl<'s> ParseReg<'s> {
             ExprValue::Jump(_) => Ok(exp),
             _ => Err(ParseErr::BadUsage),
         }
+        .and_then(|exp| Ok(exp.tj(tj).fj(fj)))
     }
 
     pub(super) fn discharge_toanyreg(&mut self, exp: Expr) -> Result<Expr, ParseErr> {
@@ -254,7 +265,7 @@ impl<'s> ParseReg<'s> {
     }
 
     pub(super) fn exp_tonextreg(&mut self, exp: Expr) -> Result<Expr, ParseErr> {
-        // TODO
+        let exp = self.p.parse_var().discharge_tovar(exp)?;
 
         self.exp_free(exp.clone())?;
         self.p.reserver_regs(1);
@@ -262,9 +273,9 @@ impl<'s> ParseReg<'s> {
     }
 
     pub(super) fn exp_toanyreg(&mut self, exp: Expr) -> Result<Expr, ParseErr> {
-        if matches!(exp.value, ExprValue::Nonreloc(_)) {
-            // TODO
+        let exp = self.p.parse_var().discharge_tovar(exp)?;
 
+        if matches!(exp.value, ExprValue::Nonreloc(_)) {
             Ok(exp)
         } else {
             self.exp_tonextreg(exp)

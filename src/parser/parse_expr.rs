@@ -153,8 +153,8 @@ impl<'s, 't, 'v> ParseExpr<'s, 't, 'v> {
             // parse unop
             self.p.parse_lex().skip();
             // parse sub_exp
-            let (_, expr) = self.sub_exp(BinOpr::UNARY_PRI)?;
-            expr
+            let (_, exp) = self.sub_exp(BinOpr::UNARY_PRI)?;
+            self.p.parse_code().prefix(unop, exp)?
         };
 
         let mut binop = BinOpr::from(self.p.parse_lex().current_token());

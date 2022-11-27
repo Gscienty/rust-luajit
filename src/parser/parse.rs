@@ -7,7 +7,7 @@ use crate::{
 };
 
 use super::{
-    FuncState, ParseCode, ParseErr, ParseExpr, ParseFunc, ParseGTab, ParseLex, ParseReg, ParseStmt,
+    FuncState, ParseCode, ParseErr, ParseExpr, ParseGTab, ParseLex, ParseReg, ParseStmt, ParseVar,
 };
 
 pub(crate) struct Parser {
@@ -183,10 +183,6 @@ impl Parser {
         ParseLex::new(self)
     }
 
-    pub(super) fn parse_func<'s>(&'s mut self, fs: &'s mut FuncState) -> ParseFunc {
-        ParseFunc::new(fs, self)
-    }
-
     pub(super) fn parse_stmt<'s>(&'s mut self, fs: &'s mut FuncState) -> ParseStmt {
         ParseStmt::new(fs, self)
     }
@@ -197,6 +193,10 @@ impl Parser {
 
     pub(super) fn parse_reg<'s>(&'s mut self) -> ParseReg {
         ParseReg::new(self)
+    }
+
+    pub(super) fn parse_var<'s>(&'s mut self) -> ParseVar {
+        ParseVar::new(self)
     }
 
     pub(super) fn parse_expr<'s>(

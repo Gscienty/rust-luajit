@@ -46,4 +46,8 @@ impl ConstantPool {
 
         self.constants.len() - 1
     }
+
+    pub(crate) fn get(&self, k: usize) -> Option<&ConstantValue> {
+        self.constants.get(k)
+    }
 }

@@ -19,17 +19,18 @@ pub(super) enum ExprValue {
     Jump(usize),   // PC, expression is a test / comparsion
     Reloc(usize),  // PC, put result in any register
 
-    Local(usize, usize), // iR, vR
+    Local(usize, usize), // idx, rR
 
     Upval(usize), // R
 
-    Index(usize, usize),    // tR, iR
-    IndexUp(usize, usize),  // tR, iR
-    IndexI(usize, usize),   // tR, iR
-    IndexStr(usize, usize), // tR, iR
-    Indexed(usize, usize),  // tR, iR
+    Index(usize, usize),    // tR, rR
+    IndexUp(usize, usize),  // tR, rR
+    IndexI(usize, usize),   // tR, rR
+    IndexStr(usize, usize), // tR, rR
+    Indexed(usize, usize),  // tR, rR
 
     Var(usize, usize), // gidx, sidx
+    Const(usize),      // gidx
 
     TODO,
 }
@@ -190,6 +191,7 @@ impl Display for ExprValue {
             ExprValue::IndexStr(v1, v2) => write!(f, "IndexStr({}, {})", *v1, *v2),
             ExprValue::Indexed(v1, v2) => write!(f, "Indexed({}, {})", *v1, *v2),
             ExprValue::Var(v1, v2) => write!(f, "Var({}, {})", *v1, *v2),
+            ExprValue::Const(v1) => write!(f, "Const({})", *v1),
         }
     }
 }

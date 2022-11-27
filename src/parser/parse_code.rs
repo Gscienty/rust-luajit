@@ -1,6 +1,6 @@
 use crate::code::{codelimit, InterCode};
 
-use super::{BinOpr, Expr, ExprValue, ParseErr, Parser};
+use super::{BinOpr, Expr, ExprValue, ParseErr, Parser, UnOpr};
 
 pub(super) struct ParseCode<'s> {
     p: &'s mut Parser,
@@ -287,6 +287,60 @@ impl<'s> ParseCode<'s> {
         self.p.emit(InterCode::TESTSET(255, rb as u8, k))
     }
 
+    pub(super) fn emit_not(&mut self, rb: usize) -> usize {
+        log::debug!("emit NOT 255, {}", rb);
+
+        self.p.emit(InterCode::NOT(255, rb as u8))
+    }
+
+    pub(super) fn emit_unm(&mut self, rb: usize) -> usize {
+        log::debug!("emit UNM 255, {}", rb);
+
+        self.p.emit(InterCode::UNM(255, rb as u8))
+    }
+
+    pub(super) fn emit_bnot(&mut self, rb: usize) -> usize {
+        log::debug!("emit BNOT 255, {}", rb);
+
+        self.p.emit(InterCode::BNOT(255, rb as u8))
+    }
+
+    pub(super) fn emit_len(&mut self, rb: usize) -> usize {
+        log::debug!("emit LEN 255, {}", rb);
+
+        self.p.emit(InterCode::LEN(255, rb as u8))
+    }
+
+    pub(super) fn emit_getupval(&mut self, rb: usize) -> usize {
+        log::debug!("emit GETUPVAL 255, {}", rb);
+
+        self.p.emit(InterCode::GETUPVAL(255, rb as u8))
+    }
+
+    pub(super) fn emit_gettabup(&mut self, rb: usize, rc: usize) -> usize {
+        log::debug!("emit GETTABUP 255, {}, {}", rb, rc);
+
+        self.p.emit(InterCode::GETTABUP(255, rb as u8, rc as u8))
+    }
+
+    pub(super) fn emit_geti(&mut self, rb: usize, rc: usize) -> usize {
+        log::debug!("emit GETI 255, {}, {}", rb, rc);
+
+        self.p.emit(InterCode::GETI(255, rb as u8, rc as u8))
+    }
+
+    pub(super) fn emit_getfield(&mut self, rb: usize, rc: usize) -> usize {
+        log::debug!("emit GETFIELD 255, {}, {}", rb, rc);
+
+        self.p.emit(InterCode::GETFIELD(255, rb as u8, rc as u8))
+    }
+
+    pub(super) fn emit_gettable(&mut self, rb: usize, rc: usize) -> usize {
+        log::debug!("emit GETTABLE 255, {}, {}", rb, rc);
+
+        self.p.emit(InterCode::GETTABLE(255, rb as u8, rc as u8))
+    }
+
     pub(super) fn set_ra(&mut self, pc: usize, ra: usize) {
         let ra = ra as u8;
 
@@ -318,6 +372,16 @@ impl<'s> ParseCode<'s> {
                 InterCode::BORK(_, rb, rc) => InterCode::BORK(ra, rb, rc),
                 InterCode::BXOR(_, rb, rc) => InterCode::BXOR(ra, rb, rc),
                 InterCode::BXORK(_, rb, rc) => InterCode::BXORK(ra, rb, rc),
+                InterCode::TESTSET(_, rb, rc) => InterCode::TESTSET(ra, rb, rc),
+                InterCode::NOT(_, rb) => InterCode::NOT(ra, rb),
+                InterCode::UNM(_, rb) => InterCode::UNM(ra, rb),
+                InterCode::BNOT(_, rb) => InterCode::BNOT(ra, rb),
+                InterCode::LEN(_, rb) => InterCode::LEN(ra, rb),
+                InterCode::GETUPVAL(_, rb) => InterCode::GETUPVAL(ra, rb),
+                InterCode::GETTABUP(_, rb, rc) => InterCode::GETTABUP(ra, rb, rc),
+                InterCode::GETI(_, rb, rc) => InterCode::GETI(ra, rb, rc),
+                InterCode::GETFIELD(_, rb, rc) => InterCode::GETFIELD(ra, rb, rc),
+                InterCode::GETTABLE(_, rb, rc) => InterCode::GETTABLE(ra, rb, rc),
                 _ => *c,
             }
         });
@@ -327,6 +391,15 @@ impl<'s> ParseCode<'s> {
         self.p.modify_code(pc, |c| {
             *c = match *c {
                 InterCode::CONCAT(ra, _) => InterCode::CONCAT(ra, rb),
+                _ => *c,
+            }
+        })
+    }
+
+    pub(super) fn set_rc(&mut self, pc: usize, rc: u8) {
+        self.p.modify_code(pc, |c| {
+            *c = match *c {
+                InterCode::VARARG(ra, _) => InterCode::VARARG(ra, rc),
                 _ => *c,
             }
         })
@@ -439,76 +512,6 @@ impl<'s> ParseCode<'s> {
             BinOpr::POW => v1.powf(v2),
             _ => return Err(ParseErr::BadUsage),
         }))
-    }
-
-    pub(super) fn posfix(&mut self, op: BinOpr, e1: Expr, e2: Expr) -> Result<Expr, ParseErr> {
-        log::debug!("parse posfix, op: {}", op);
-        match op {
-            BinOpr::AND => {
-                let mut e2 = e2;
-                self.jump_concatlist(&mut e2.false_jumpto, e1.false_jumpto)?;
-
-                Ok(e2)
-            }
-            BinOpr::OR => {
-                let mut e2 = e2;
-                self.jump_concatlist(&mut e2.true_jumpto, e1.true_jumpto)?;
-
-                Ok(e2)
-            }
-            BinOpr::EQ | BinOpr::NE => {
-                if e1.inreg() {
-                    self.cmp_eq(op, e1.clone(), e2.clone())
-                } else {
-                    self.cmp_eq(op, e2.clone(), e1.clone())
-                }
-            }
-            BinOpr::LT | BinOpr::LE | BinOpr::GT | BinOpr::GE => self.cmp_order(op, e1, e2),
-            BinOpr::CONCAT => {
-                log::debug!("parse posfix concat");
-                let e2 = self.p.parse_reg().exp_tonextreg(e2)?;
-
-                let pc = self.p.get_codelen() - 1;
-                let code = self.p.get_code(pc).and_then(|c| Some(*c));
-
-                match code {
-                    Some(InterCode::CONCAT(pra, prb)) => match e1.value {
-                        ExprValue::Nonreloc(reg) if reg + 1 == pra as usize => {
-                            self.set_ra(pc, reg);
-                            self.set_rb(pc, prb + 1);
-
-                            self.p.parse_reg().exp_free(e2)?;
-
-                            Ok(e1)
-                        }
-                        _ => Err(ParseErr::BadUsage),
-                    },
-                    _ => match e1.value {
-                        ExprValue::Nonreloc(reg) => {
-                            self.emit_concat(reg);
-                            self.p.parse_reg().exp_free(e2)?;
-
-                            Ok(Expr::nonreloc(reg))
-                        }
-                        _ => Err(ParseErr::BadUsage),
-                    },
-                }
-            }
-            BinOpr::ADD
-            | BinOpr::SUB
-            | BinOpr::MUL
-            | BinOpr::DIV
-            | BinOpr::IDIV
-            | BinOpr::MOD
-            | BinOpr::POW
-            | BinOpr::SHL
-            | BinOpr::SHR
-            | BinOpr::BAND
-            | BinOpr::BOR
-            | BinOpr::BXOR => self.arith(op, e1, e2),
-
-            _ => Err(ParseErr::BadUsage),
-        }
     }
 
     fn arith_inreg(&mut self, op: BinOpr, e1: Expr, e2: Expr) -> Result<Expr, ParseErr> {
@@ -627,6 +630,156 @@ impl<'s> ParseCode<'s> {
         }
     }
 
+    pub(super) fn posfix(&mut self, op: BinOpr, e1: Expr, e2: Expr) -> Result<Expr, ParseErr> {
+        log::debug!("parse posfix, op: {}", op);
+        let e2 = self.p.parse_var().discharge_tovar(e2)?;
+
+        match op {
+            BinOpr::AND => {
+                let mut e2 = e2;
+                self.jump_concatlist(&mut e2.false_jumpto, e1.false_jumpto)?;
+
+                Ok(e2)
+            }
+            BinOpr::OR => {
+                let mut e2 = e2;
+                self.jump_concatlist(&mut e2.true_jumpto, e1.true_jumpto)?;
+
+                Ok(e2)
+            }
+            BinOpr::EQ | BinOpr::NE => {
+                if e1.inreg() {
+                    self.cmp_eq(op, e1.clone(), e2.clone())
+                } else {
+                    self.cmp_eq(op, e2.clone(), e1.clone())
+                }
+            }
+            BinOpr::LT | BinOpr::LE | BinOpr::GT | BinOpr::GE => self.cmp_order(op, e1, e2),
+            BinOpr::CONCAT => {
+                log::debug!("parse posfix concat");
+                let e2 = self.p.parse_reg().exp_tonextreg(e2)?;
+
+                let pc = self.p.get_codelen() - 1;
+                let code = self.p.get_code(pc).and_then(|c| Some(*c));
+
+                match code {
+                    Some(InterCode::CONCAT(pra, prb)) => match e1.value {
+                        ExprValue::Nonreloc(reg) if reg + 1 == pra as usize => {
+                            self.set_ra(pc, reg);
+                            self.set_rb(pc, prb + 1);
+
+                            self.p.parse_reg().exp_free(e2)?;
+
+                            Ok(e1)
+                        }
+                        _ => Err(ParseErr::BadUsage),
+                    },
+                    _ => match e1.value {
+                        ExprValue::Nonreloc(reg) => {
+                            self.emit_concat(reg);
+                            self.p.parse_reg().exp_free(e2)?;
+
+                            Ok(e1)
+                        }
+                        _ => Err(ParseErr::BadUsage),
+                    },
+                }
+            }
+            BinOpr::ADD
+            | BinOpr::SUB
+            | BinOpr::MUL
+            | BinOpr::DIV
+            | BinOpr::IDIV
+            | BinOpr::MOD
+            | BinOpr::POW
+            | BinOpr::SHL
+            | BinOpr::SHR
+            | BinOpr::BAND
+            | BinOpr::BOR
+            | BinOpr::BXOR => self.arith(op, e1, e2),
+
+            _ => Err(ParseErr::BadUsage),
+        }
+    }
+
+    fn unarith(&mut self, op: UnOpr, exp: Expr) -> Result<Expr, ParseErr> {
+        let exp = self.p.parse_reg().exp_toanyreg(exp)?;
+        let r = self.p.parse_reg().locreg(exp)?;
+        self.p.free_reg(r)?;
+
+        match op {
+            UnOpr::MINUS => Ok(Expr::reloc(self.emit_unm(r))),
+            UnOpr::BNOT => Ok(Expr::reloc(self.emit_bnot(r))),
+            UnOpr::LEN => Ok(Expr::reloc(self.emit_len(r))),
+            _ => Err(ParseErr::BadUsage),
+        }
+    }
+
+    fn removevalues(&mut self, list: Option<usize>) {
+        let mut list = list;
+        while let Some(pc) = list {
+            self.patch_testreg(pc, None);
+
+            list = self.p.get_jump(pc);
+        }
+    }
+
+    pub(super) fn prefix(&mut self, op: UnOpr, exp: Expr) -> Result<Expr, ParseErr> {
+        log::debug!("parse prefix, op: {}", op);
+
+        let exp = self.p.parse_var().discharge_tovar(exp)?;
+
+        match op {
+            UnOpr::MINUS => match exp.value {
+                ExprValue::Float(v) => Ok(Expr::from(-v)),
+                ExprValue::Integer(v) => Ok(Expr::from(-v)),
+                _ => self.unarith(op, exp),
+            },
+            UnOpr::BNOT => match exp.value {
+                ExprValue::Integer(v) => Ok(Expr::from(!v)),
+                _ => self.unarith(op, exp),
+            },
+            UnOpr::LEN => self.unarith(op, exp),
+            UnOpr::NOT => {
+                let tj = exp.true_jumpto;
+                let fj = exp.false_jumpto;
+
+                let exp = match exp.value {
+                    ExprValue::Nil | ExprValue::Bool(false) => Ok(Expr::from(true)),
+
+                    ExprValue::K(_)
+                    | ExprValue::Float(_)
+                    | ExprValue::Integer(_)
+                    | ExprValue::String(_)
+                    | ExprValue::Bool(true) => Ok(Expr::from(false)),
+
+                    ExprValue::Jump(pc) => {
+                        self.negate_cond(pc);
+
+                        Ok(exp)
+                    }
+
+                    ExprValue::Reloc(_) | ExprValue::Nonreloc(_) => {
+                        let exp = self.p.parse_reg().discharge_toanyreg(exp)?;
+                        let r = self.p.parse_reg().locreg(exp)?;
+                        self.p.free_reg(r)?;
+
+                        Ok(Expr::reloc(self.emit_not(r)))
+                    }
+                    _ => Err(ParseErr::BadUsage),
+                }?
+                .tj(fj)
+                .fj(tj);
+
+                self.removevalues(exp.false_jumpto);
+                self.removevalues(exp.true_jumpto);
+
+                Ok(exp)
+            }
+            _ => Err(ParseErr::BadUsage),
+        }
+    }
+
     pub(super) fn jump_patchtohere(&mut self, list: Option<usize>) -> Result<(), ParseErr> {
         let here = self.p.mark_label();
         self.jump_patchlistaux(list, Some(here), None, Some(here))
@@ -738,7 +891,7 @@ impl<'s> ParseCode<'s> {
     }
 
     pub(super) fn goiftrue(&mut self, exp: Expr) -> Result<Expr, ParseErr> {
-        let mut exp = exp;
+        let mut exp = self.p.parse_var().discharge_tovar(exp)?;
 
         match exp.value {
             ExprValue::Jump(pc) => {
@@ -767,7 +920,7 @@ impl<'s> ParseCode<'s> {
     }
 
     pub(super) fn goiffalse(&mut self, exp: Expr) -> Result<Expr, ParseErr> {
-        let mut exp = exp;
+        let mut exp = self.p.parse_var().discharge_tovar(exp)?;
 
         match exp.value {
             ExprValue::Jump(pc) => {
