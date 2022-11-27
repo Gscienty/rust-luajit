@@ -211,9 +211,9 @@ mod tests {
 
         assert!(p.parse().is_ok());
 
-        for ci in 0..p.get_codelen() {
-            if let Some(c) = p.get_code(ci) {
-                println!("{}", *c);
+        for ci in 0..p.emiter().pc() {
+            if let Some(c) = p.emiter().get_code(ci) {
+                println!("{}", c);
             }
         }
     }

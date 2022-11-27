@@ -5,16 +5,15 @@ use crate::{
     object::{ExprDesc, VarKind},
 };
 
-use super::{FuncState, ParseErr, ParseLex, Parser};
+use super::{ParseErr, ParseLex, Parser};
 
-pub(super) struct ParseStmt<'s, 't> {
-    fs: &'s mut FuncState,
-    p: &'t mut Parser,
+pub(super) struct ParseStmt<'s> {
+    p: &'s mut Parser,
 }
 
-impl<'s, 't> ParseStmt<'s, 't> {
-    pub(super) fn new(fs: &'s mut FuncState, p: &'t mut Parser) -> Self {
-        Self { fs, p }
+impl<'s> ParseStmt<'s> {
+    pub(super) fn new(p: &'s mut Parser) -> Self {
+        Self { p }
     }
 
     pub(super) fn block_follow(&self, withuntil: bool) -> bool {
@@ -34,8 +33,7 @@ impl<'s, 't> ParseStmt<'s, 't> {
         // parse `if` | `elseif`
         self.p.parse_lex().skip();
         // parse cond_exp
-        let mut cond_expr = ExprDesc::new();
-        self.p.parse_expr(self.fs, &mut cond_expr).expr_exp()?;
+        self.p.parse_expr().expr_exp()?;
         // parse `then`
         match_token!(consume: self.p, Token::Then)?;
         // parse block_stmt
@@ -84,9 +82,7 @@ impl<'s, 't> ParseStmt<'s, 't> {
         // parse `while`
         self.p.parse_lex().skip();
         // parse cond_exp
-        self.p
-            .parse_expr(self.fs, &mut ExprDesc::new())
-            .expr_exp()?;
+        self.p.parse_expr().expr_exp()?;
         // parse `do`
         match_token!(consume: self.p, Token::Do)?;
         // parse block_stmt
@@ -121,20 +117,14 @@ impl<'s, 't> ParseStmt<'s, 't> {
         // parse `=`
         match_token!(consume: self.p, Token::Operator('='))?;
         // parse exp (initial value)
-        self.p
-            .parse_expr(self.fs, &mut ExprDesc::new())
-            .expr_exp()?;
+        self.p.parse_expr().expr_exp()?;
         // parse `,`
         match_token!(consume: self.p, Token::Operator(','))?;
         // parse exp (end value)
-        self.p
-            .parse_expr(self.fs, &mut ExprDesc::new())
-            .expr_exp()?;
+        self.p.parse_expr().expr_exp()?;
         // parse [ `,` exp ] (step value)
         if match_token!(test_consume: self.p, Token::Operator(',')) {
-            self.p
-                .parse_expr(self.fs, &mut ExprDesc::new())
-                .expr_exp()?;
+            self.p.parse_expr().expr_exp()?;
         }
         // parse forbody_stmt
         self.forbody_stmt(0, 1, false)?;
@@ -153,10 +143,7 @@ impl<'s, 't> ParseStmt<'s, 't> {
         // parse `in`
         match_token!(consume: self.p, Token::In)?;
         // parse explist_exp
-        let _ne = self
-            .p
-            .parse_expr(self.fs, &mut ExprDesc::new())
-            .exprlist_exp()?;
+        let _ne = self.p.parse_expr().exprlist_exp()?;
         // parse forbody_stmt
         self.forbody_stmt(0, 0, true)?;
 
@@ -208,9 +195,7 @@ impl<'s, 't> ParseStmt<'s, 't> {
         // parse `until`
         match_token!(consume: self.p, Token::Until)?;
         // parse cond_exp
-        self.p
-            .parse_expr(self.fs, &mut ExprDesc::new())
-            .expr_exp()?;
+        self.p.parse_expr().expr_exp()?;
 
         Ok(())
     }
@@ -226,7 +211,7 @@ impl<'s, 't> ParseStmt<'s, 't> {
                 match self.p.lex(|x| x.token.clone()) {
                     // parse name
                     Token::Name(name) => {
-                        self.p.pushloc(&self.fs, &name);
+                        self.p.pushloc(&name);
                         self.p.parse_lex().skip();
                         _nparams += 1;
                     }
@@ -249,26 +234,20 @@ impl<'s, 't> ParseStmt<'s, 't> {
     }
 
     // body_stmt ::= `(` parlist `)` block_stmt `end`
-    pub(super) fn body_stmt(
-        &mut self,
-        _expr: &mut ExprDesc,
-        ismethod: bool,
-    ) -> Result<(), ParseErr> {
+    pub(super) fn body_stmt(&mut self, ismethod: bool) -> Result<(), ParseErr> {
         log::debug!("parse body_stmt");
-
-        let mut fs = FuncState::new();
 
         // parse `(`
         match_token!(consume: self.p, Token::Operator('('))?;
         if ismethod {
-            self.p.pushloc(&fs, "self");
+            self.p.pushloc("self");
         }
         // parse parlist_stmt
-        self.p.parse_stmt(&mut fs).parlist_stmt()?;
+        self.p.parse_stmt().parlist_stmt()?;
         // parse `)`
         match_token!(consume: self.p, Token::Operator(')'))?;
         // parse block_stmt
-        self.p.parse_stmt(&mut fs).block_stmt()?;
+        self.p.parse_stmt().block_stmt()?;
         // parse `end`
         match_token!(consume: self.p, Token::End)?;
         Ok(())
@@ -311,14 +290,13 @@ impl<'s, 't> ParseStmt<'s, 't> {
         log::debug!("parse func_stmt");
 
         let mut name_expr = ExprDesc::new();
-        let mut func_expr = ExprDesc::new();
 
         // parse `function`
         self.p.parse_lex().skip();
         // parse funcname_stmt
         let ismethod = self.funcname_stmt(&mut name_expr)?;
         // parse body_stmt
-        self.body_stmt(&mut func_expr, ismethod)?;
+        self.body_stmt(ismethod)?;
 
         Ok(())
     }
@@ -330,7 +308,7 @@ impl<'s, 't> ParseStmt<'s, 't> {
         // parse name
         let _name = self.p.parse_lex().name()?;
         // parse body_stmt
-        self.body_stmt(&mut ExprDesc::new(), false)?;
+        self.body_stmt(false)?;
 
         Ok(())
     }
@@ -372,9 +350,7 @@ impl<'s, 't> ParseStmt<'s, 't> {
         // parse `=`
         if match_token!(test_consume: self.p, Token::Operator('=')) {
             // parse exprlist_exp
-            self.p
-                .parse_expr(self.fs, &mut ExprDesc::new())
-                .exprlist_exp()?;
+            self.p.parse_expr().exprlist_exp()?;
         }
 
         Ok(())
@@ -419,9 +395,7 @@ impl<'s, 't> ParseStmt<'s, 't> {
 
         // parse exprlist_exp
         if !self.block_follow(true) && !match_token!(test: self.p, Token::Operator(';')) {
-            self.p
-                .parse_expr(self.fs, &mut ExprDesc::new())
-                .exprlist_exp()?;
+            self.p.parse_expr().exprlist_exp()?;
         }
 
         // parse `;`
@@ -460,18 +434,14 @@ impl<'s, 't> ParseStmt<'s, 't> {
         // parse `,`
         if match_token!(test_consume: self.p, Token::Operator(',')) {
             // parse suffixed_exp
-            self.p
-                .parse_expr(self.fs, &mut ExprDesc::new())
-                .suffixed_exp()?;
+            self.p.parse_expr().suffixed_exp()?;
             // parse restassign_stmt
             self.restassign_stmt()?;
         } else {
             // parse `=`
             match_token!(consume: self.p, Token::Operator('='))?;
             // parse exprlist_exp
-            self.p
-                .parse_expr(self.fs, &mut ExprDesc::new())
-                .exprlist_exp()?;
+            self.p.parse_expr().exprlist_exp()?;
         }
         Ok(())
     }
@@ -481,9 +451,7 @@ impl<'s, 't> ParseStmt<'s, 't> {
         log::debug!("parse expr_stmt");
 
         // parse suffixed_exp
-        self.p
-            .parse_expr(self.fs, &mut ExprDesc::new())
-            .suffixed_exp()?;
+        self.p.parse_expr().suffixed_exp()?;
 
         if match_token!(test: self.p, Token::Operator('=' | ',')) {
             self.restassign_stmt()?;

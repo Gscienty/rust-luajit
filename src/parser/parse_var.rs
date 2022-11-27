@@ -25,17 +25,15 @@ impl<'s> ParseVar<'s> {
                 _ => Err(ParseErr::BadUsage),
             },
             ExprValue::Local(_, reg) => Ok(Expr::nonreloc(reg)),
-            ExprValue::Upval(reg) => Ok(Expr::reloc(self.p.parse_code().emit_getupval(reg))),
-            ExprValue::IndexUp(t, idx) => {
-                Ok(Expr::reloc(self.p.parse_code().emit_gettabup(t, idx)))
-            }
+            ExprValue::Upval(reg) => Ok(Expr::reloc(self.p.emiter().emit_getupval(reg))),
+            ExprValue::IndexUp(t, idx) => Ok(Expr::reloc(self.p.emiter().emit_gettabup(t, idx))),
             ExprValue::IndexI(t, idx) => {
                 self.p.free_reg(t)?;
-                Ok(Expr::reloc(self.p.parse_code().emit_geti(t, idx)))
+                Ok(Expr::reloc(self.p.emiter().emit_geti(t, idx)))
             }
             ExprValue::IndexStr(t, idx) => {
                 self.p.free_reg(t)?;
-                Ok(Expr::reloc(self.p.parse_code().emit_getfield(t, idx)))
+                Ok(Expr::reloc(self.p.emiter().emit_getfield(t, idx)))
             }
             ExprValue::Indexed(t, idx) => {
                 if t < idx {
@@ -46,10 +44,10 @@ impl<'s> ParseVar<'s> {
                     self.p.free_reg(idx)?;
                 }
 
-                Ok(Expr::reloc(self.p.parse_code().emit_getfield(t, idx)))
+                Ok(Expr::reloc(self.p.emiter().emit_getfield(t, idx)))
             }
             ExprValue::VarArg(pc) => {
-                self.p.parse_code().set_rc(pc, 2);
+                self.p.emiter().set_rc(pc, 2);
                 Ok(Expr::reloc(pc))
             }
             ExprValue::Call(_pc) => {

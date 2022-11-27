@@ -3,11 +3,12 @@ use std::{cell::RefCell, rc::Rc};
 use crate::{
     code::InterCode,
     lexer::Lexer,
-    object::{ConstantPool, ExprDesc, LabelDesc, RefValue, Table, VarDesc, VarKind},
+    object::{ConstantPool, LabelDesc, RefValue, Table, VarDesc, VarKind},
 };
 
 use super::{
-    FuncState, ParseCode, ParseErr, ParseExpr, ParseGTab, ParseLex, ParseReg, ParseStmt, ParseVar,
+    Emiter, FuncState, ParseCode, ParseErr, ParseExpr, ParseGTab, ParseLex, ParseReg, ParseStmt,
+    ParseVar,
 };
 
 pub(crate) struct Parser {
@@ -16,6 +17,8 @@ pub(crate) struct Parser {
     pub(super) nkn: usize,
 
     gfs: FuncState,
+    pub(super) fs: FuncState,
+
     lexer: Lexer,
 
     envn: String,
@@ -24,8 +27,8 @@ pub(crate) struct Parser {
     goto: Vec<LabelDesc>,
     label: Vec<LabelDesc>,
 
-    codes: Vec<InterCode>,
-    last_target: usize,
+    pub(super) codes: Vec<InterCode>,
+    pub(super) last_target: usize,
 
     pub(super) freereg: usize,
     pub(super) constant_pool: Rc<RefCell<ConstantPool>>,
@@ -33,12 +36,15 @@ pub(crate) struct Parser {
 
 impl Parser {
     pub(super) fn new(source: &str) -> Self {
+        let gfs = FuncState::new();
+
         Self {
             gtab: Table::new(),
             nkgc: 0,
             nkn: 0,
 
-            gfs: FuncState::new(),
+            gfs: gfs.clone(),
+            fs: gfs.clone(),
             lexer: Lexer::new(source),
 
             envn: String::from("ENV"),
@@ -69,36 +75,8 @@ impl Parser {
         f(&mut self.lexer)
     }
 
-    pub(super) fn emit(&mut self, code: InterCode) -> usize {
-        self.codes.push(code);
-        self.codes.len() - 1
-    }
-
-    pub(super) fn remove_lastcode(&mut self) {
-        self.codes.pop();
-    }
-
-    pub(super) fn modify_code<F>(&mut self, pc: usize, f: F)
-    where
-        F: FnOnce(&mut InterCode),
-    {
-        if let Some(code) = self.codes.get_mut(pc) {
-            f(code)
-        }
-    }
-
-    pub(super) fn mark_label(&mut self) -> usize {
-        self.last_target = self.get_codelen();
-
-        self.get_codelen()
-    }
-
-    pub(super) fn get_code(&self, pc: usize) -> Option<&InterCode> {
-        self.codes.get(pc)
-    }
-
-    pub(super) fn get_codelen(&self) -> usize {
-        self.codes.len()
+    pub(super) fn emiter(&mut self) -> Emiter {
+        Emiter::new(self)
     }
 
     pub(super) fn reserver_regs(&mut self, n: usize) {
@@ -138,17 +116,17 @@ impl Parser {
         self.actvar.get(idx)
     }
 
-    pub(super) fn getloc(&self, fs: &FuncState, idx: usize) -> Option<&VarDesc> {
-        self.actvar.get(fs.prop().firstlocal + idx)
+    pub(super) fn getloc(&self, idx: usize) -> Option<&VarDesc> {
+        self.actvar.get(self.fs.prop().firstlocal + idx)
     }
 
-    pub(super) fn getloc_mut(&mut self, fs: &FuncState, idx: usize) -> Option<&mut VarDesc> {
-        self.actvar.get_mut(fs.prop().firstlocal + idx)
+    pub(super) fn getloc_mut(&mut self, idx: usize) -> Option<&mut VarDesc> {
+        self.actvar.get_mut(self.fs.prop().firstlocal + idx)
     }
 
-    pub(super) fn pushloc(&mut self, fs: &FuncState, name: &str) -> usize {
+    pub(super) fn pushloc(&mut self, name: &str) -> usize {
         self.actvar.push(VarDesc::new(name, VarKind::REG));
-        self.actvar.len() - 1 - fs.prop().firstlocal
+        self.actvar.len() - 1 - self.fs.prop().firstlocal
     }
 
     pub(super) fn env_name(&self) -> &str {
@@ -163,28 +141,12 @@ impl Parser {
         self.goto.len()
     }
 
-    pub(super) fn get_jump(&self, pc: usize) -> Option<usize> {
-        if let Some(InterCode::JMP(Some(offset))) = self.get_code(pc) {
-            Some(pc + 1 + *offset as usize)
-        } else {
-            None
-        }
-    }
-
-    pub(super) fn get_ctrljump(&self, pc: usize) -> (usize, Option<&InterCode>) {
-        match self.codes.get(pc) {
-            Some(ins) if ins.test_mode() => (pc - 1, self.codes.get(pc - 1)),
-            Some(ins) => (pc, Some(ins)),
-            _ => (pc, None),
-        }
-    }
-
     pub(super) fn parse_lex(&mut self) -> ParseLex {
         ParseLex::new(self)
     }
 
-    pub(super) fn parse_stmt<'s>(&'s mut self, fs: &'s mut FuncState) -> ParseStmt {
-        ParseStmt::new(fs, self)
+    pub(super) fn parse_stmt<'s>(&'s mut self) -> ParseStmt {
+        ParseStmt::new(self)
     }
 
     pub(super) fn parse_code<'s>(&'s mut self) -> ParseCode {
@@ -199,12 +161,8 @@ impl Parser {
         ParseVar::new(self)
     }
 
-    pub(super) fn parse_expr<'s>(
-        &'s mut self,
-        fs: &'s mut FuncState,
-        expr: &'s mut ExprDesc,
-    ) -> ParseExpr {
-        ParseExpr::new(fs, self, expr)
+    pub(super) fn parse_expr<'s>(&'s mut self) -> ParseExpr {
+        ParseExpr::new(self)
     }
 
     pub(super) fn parse_gtab<'s>(&'s mut self) -> ParseGTab {
@@ -215,6 +173,6 @@ impl Parser {
         self.gfs.setvararg(0)?; // main function declared vararg
         self.lexer.token_next(); // read first token
 
-        self.parse_stmt(&mut self.gfs.clone()).stmtlist()
+        self.parse_stmt().stmtlist()
     }
 }

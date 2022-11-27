@@ -1,17 +1,14 @@
-use crate::{lexer::Token, match_token, object::ExprDesc};
+use crate::{lexer::Token, match_token};
 
-use super::{BinOpr, Expr, FuncState, ParseErr, Parser, UnOpr};
+use super::{BinOpr, Expr, ParseErr, Parser, UnOpr};
 
-pub(super) struct ParseExpr<'s, 't, 'v> {
-    fs: &'s mut FuncState,
-    p: &'t mut Parser,
-
-    expr: &'v mut ExprDesc,
+pub(super) struct ParseExpr<'s> {
+    p: &'s mut Parser,
 }
 
-impl<'s, 't, 'v> ParseExpr<'s, 't, 'v> {
-    pub(super) fn new(fs: &'s mut FuncState, p: &'t mut Parser, expr: &'v mut ExprDesc) -> Self {
-        Self { fs, p, expr }
+impl<'s> ParseExpr<'s> {
+    pub(super) fn new(p: &'s mut Parser) -> Self {
+        Self { p }
     }
 
     pub(super) fn then<U, F>(self, f: F) -> U
@@ -104,7 +101,7 @@ impl<'s, 't, 'v> ParseExpr<'s, 't, 'v> {
     }
 
     // simple_exp -> FLT | INT | STRING | NIL | TRUE | FALSE | ... | constructor_exp | FUNCTION body
-    // | suffixed_exp
+    //              | suffixed_exp
     pub(super) fn simple_exp(&mut self) -> Result<Expr, ParseErr> {
         log::debug!("parse simple_exp");
 
@@ -116,10 +113,10 @@ impl<'s, 't, 'v> ParseExpr<'s, 't, 'v> {
             Token::True => Expr::from(true),
             Token::False => Expr::from(false),
             Token::Dots => {
-                if !self.fs.prop().proto.prop().is_vararg {
+                if !self.p.fs.prop().proto.prop().is_vararg {
                     return Err(ParseErr::BadUsage);
                 }
-                Expr::vararg(self.p.parse_code().emit_vararg())
+                Expr::vararg(self.p.emiter().emit_vararg())
             }
             Token::Operator('{') => {
                 self.constructor_exp()?;
@@ -129,7 +126,7 @@ impl<'s, 't, 'v> ParseExpr<'s, 't, 'v> {
                 // parse `function`
                 self.p.parse_lex().skip();
                 // parse body_stmt
-                self.p.parse_stmt(self.fs).body_stmt(self.expr, false)?;
+                self.p.parse_stmt().body_stmt(false)?;
 
                 return Ok(Expr::todo());
             }
@@ -214,9 +211,7 @@ impl<'s, 't, 'v> ParseExpr<'s, 't, 'v> {
                 // parse `)`
                 match_token!(consume: self.p, Token::Operator(')'))?;
 
-                // TODO discharge vars
-
-                Ok(exp)
+                self.p.parse_var().discharge_tovar(exp)
             }
             Token::Name(_name) => {
                 // parse name

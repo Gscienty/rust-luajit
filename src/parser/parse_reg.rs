@@ -111,12 +111,12 @@ impl<'s> ParseReg<'s> {
 
         match exp.value {
             ExprValue::Nil => {
-                self.p.parse_code().emit_loadnil(reg, 1);
+                self.p.emiter().emit_loadnil(reg, 1);
 
                 Ok(Expr::nonreloc(reg))
             }
             ExprValue::Bool(value) => {
-                self.p.parse_code().emit_loadbool(reg, value);
+                self.p.emiter().emit_loadbool(reg, value);
 
                 Ok(Expr::nonreloc(reg))
             }
@@ -129,7 +129,7 @@ impl<'s> ParseReg<'s> {
                     && value as u32 <= codelimit::MAX_SBX
                     && value as u32 as f64 == value
                 {
-                    self.p.parse_code().emit_loadfloat(reg, value);
+                    self.p.emiter().emit_loadfloat(reg, value);
                     Ok(Expr::nonreloc(reg))
                 } else {
                     let exp = self.ftok(value)?;
@@ -138,7 +138,7 @@ impl<'s> ParseReg<'s> {
             }
             ExprValue::Integer(value) => {
                 if 0 <= value && value as u32 <= codelimit::MAX_SBX {
-                    self.p.parse_code().emit_loadint(reg, value);
+                    self.p.emiter().emit_loadint(reg, value);
                     Ok(Expr::nonreloc(reg))
                 } else {
                     let exp = self.itok(value)?;
@@ -146,17 +146,17 @@ impl<'s> ParseReg<'s> {
                 }
             }
             ExprValue::K(kidx) => {
-                self.p.parse_code().emit_loadk(reg, kidx);
+                self.p.emiter().emit_loadk(reg, kidx);
 
                 Ok(Expr::nonreloc(reg))
             }
             ExprValue::Reloc(pc) => {
-                self.p.parse_code().set_ra(pc, reg);
+                self.p.emiter().set_ra(pc, reg);
                 Ok(Expr::nonreloc(reg))
             }
             ExprValue::Nonreloc(nreg) => {
                 if reg != nreg {
-                    self.p.parse_code().emit_move(reg, nreg);
+                    self.p.emiter().emit_move(reg, nreg);
                 }
                 Ok(Expr::nonreloc(reg))
             }
@@ -206,14 +206,13 @@ impl<'s> ParseReg<'s> {
         }
     }
 
-    // why use mut?
-    fn need_value(&self, list: Option<usize>) -> bool {
+    fn need_value(&mut self, list: Option<usize>) -> bool {
         let mut list = list;
         while let Some(pc) = list {
-            let (_, ins) = self.p.get_ctrljump(pc);
+            let (_, ins) = self.p.emiter().get_ctrljump(pc);
             match ins {
                 Some(ins) if !matches!(ins, InterCode::TESTSET(_, _, _)) => return true,
-                _ => list = self.p.get_jump(pc),
+                _ => list = self.p.emiter().get_jump(pc),
             }
         }
 
@@ -236,16 +235,16 @@ impl<'s> ParseReg<'s> {
             if self.need_value(exp.true_jumpto) || self.need_value(exp.false_jumpto) {
                 let fj = match exp.value {
                     ExprValue::Jump(_) => None,
-                    _ => Some(self.p.parse_code().emit_jmp()),
+                    _ => Some(self.p.emiter().emit_jmp()),
                 };
 
-                pf = Some(self.p.parse_code().emit_lfalseskip(reg));
-                pt = Some(self.p.parse_code().emit_loadbool(reg, true));
+                pf = Some(self.p.emiter().emit_lfalseskip(reg));
+                pt = Some(self.p.emiter().emit_loadbool(reg, true));
 
                 self.p.parse_code().jump_patchtohere(fj)?;
             }
 
-            let final_pc = self.p.mark_label();
+            let final_pc = self.p.emiter().mark_pc();
 
             self.p.parse_code().jump_patchlistaux(
                 exp.false_jumpto,
@@ -282,7 +281,7 @@ impl<'s> ParseReg<'s> {
         }
     }
 
-    pub(super) fn locreg(&mut self, exp: Expr) -> Result<usize, ParseErr> {
+    pub(super) fn locreg(&mut self, exp: &Expr) -> Result<usize, ParseErr> {
         match exp.value {
             ExprValue::Nonreloc(reg) => Ok(reg),
             _ => Err(ParseErr::BadUsage),
