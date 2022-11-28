@@ -3,12 +3,12 @@ use std::{cell::RefCell, rc::Rc};
 use crate::{
     code::InterCode,
     lexer::Lexer,
-    object::{ConstantPool, LabelDesc, RefValue, Table, VarDesc, VarKind},
+    object::{ConstantPool, LabelDesc, RefValue, Table, Var},
 };
 
 use super::{
-    Emiter, FuncState, ParseCode, ParseErr, ParseExpr, ParseGTab, ParseLex, ParseReg, ParseStmt,
-    ParseVar,
+    Emiter, FuncState, ParseCode, ParseErr, ParseExpr, ParseFunc, ParseGTab, ParseLex, ParseReg,
+    ParseStmt, ParseVar,
 };
 
 pub(crate) struct Parser {
@@ -23,14 +23,13 @@ pub(crate) struct Parser {
 
     envn: String,
 
-    actvar: Vec<VarDesc>,
+    pub(super) actvar: Vec<Var>,
     goto: Vec<LabelDesc>,
     label: Vec<LabelDesc>,
 
     pub(super) codes: Vec<InterCode>,
     pub(super) last_target: usize,
 
-    pub(super) freereg: usize,
     pub(super) constant_pool: Rc<RefCell<ConstantPool>>,
 }
 
@@ -56,7 +55,6 @@ impl Parser {
             codes: Vec::new(),
             last_target: 0,
 
-            freereg: 0,
             constant_pool: Rc::new(RefCell::new(ConstantPool::new())),
         }
     }
@@ -73,23 +71,6 @@ impl Parser {
         F: FnOnce(&mut Lexer) -> U,
     {
         f(&mut self.lexer)
-    }
-
-    pub(super) fn emiter(&mut self) -> Emiter {
-        Emiter::new(self)
-    }
-
-    pub(super) fn reserver_regs(&mut self, n: usize) {
-        self.freereg += n
-    }
-
-    pub(super) fn free_reg(&mut self, reg: usize) -> Result<(), ParseErr> {
-        self.freereg -= 1;
-
-        if self.freereg != reg {
-            return Err(ParseErr::BadUsage);
-        }
-        Ok(())
     }
 
     pub(super) fn global<U, F>(&self, f: F) -> U
@@ -112,23 +93,6 @@ impl Parser {
         }
     }
 
-    pub(super) fn getloc_abs(&self, idx: usize) -> Option<&VarDesc> {
-        self.actvar.get(idx)
-    }
-
-    pub(super) fn getloc(&self, idx: usize) -> Option<&VarDesc> {
-        self.actvar.get(self.fs.prop().firstlocal + idx)
-    }
-
-    pub(super) fn getloc_mut(&mut self, idx: usize) -> Option<&mut VarDesc> {
-        self.actvar.get_mut(self.fs.prop().firstlocal + idx)
-    }
-
-    pub(super) fn pushloc(&mut self, name: &str) -> usize {
-        self.actvar.push(VarDesc::new(name, VarKind::REG));
-        self.actvar.len() - 1 - self.fs.prop().firstlocal
-    }
-
     pub(super) fn env_name(&self) -> &str {
         &self.envn
     }
@@ -141,38 +105,72 @@ impl Parser {
         self.goto.len()
     }
 
-    pub(super) fn parse_lex(&mut self) -> ParseLex {
+    pub(super) fn emiter(&mut self) -> Emiter {
+        Emiter::new(self)
+    }
+
+    pub(super) fn plex(&mut self) -> ParseLex {
         ParseLex::new(self)
     }
 
-    pub(super) fn parse_stmt<'s>(&'s mut self) -> ParseStmt {
+    pub(super) fn pstmt<'s>(&'s mut self) -> ParseStmt {
         ParseStmt::new(self)
     }
 
-    pub(super) fn parse_code<'s>(&'s mut self) -> ParseCode {
+    pub(super) fn pcode<'s>(&'s mut self) -> ParseCode {
         ParseCode::new(self)
     }
 
-    pub(super) fn parse_reg<'s>(&'s mut self) -> ParseReg {
+    pub(super) fn preg<'s>(&'s mut self) -> ParseReg {
         ParseReg::new(self)
     }
 
-    pub(super) fn parse_var<'s>(&'s mut self) -> ParseVar {
+    pub(super) fn pvar<'s>(&'s mut self) -> ParseVar {
         ParseVar::new(self)
     }
 
-    pub(super) fn parse_expr<'s>(&'s mut self) -> ParseExpr {
+    pub(super) fn pexp<'s>(&'s mut self) -> ParseExpr {
         ParseExpr::new(self)
     }
 
-    pub(super) fn parse_gtab<'s>(&'s mut self) -> ParseGTab {
+    pub(super) fn pfscope<'s>(&'s mut self) -> ParseFunc {
+        ParseFunc::new(self)
+    }
+
+    pub(super) fn pgtab<'s>(&'s mut self) -> ParseGTab {
         ParseGTab::new(self)
     }
 
     pub(crate) fn parse(&mut self) -> Result<(), ParseErr> {
-        self.gfs.setvararg(0)?; // main function declared vararg
         self.lexer.token_next(); // read first token
 
-        self.parse_stmt().stmtlist()
+        self.pstmt().stmtlist()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{parser::Parser, utils::Logger};
+
+    #[test]
+    fn test_code_concat() {
+        log::set_logger(&Logger {}).unwrap();
+        log::set_max_level(log::LevelFilter::Debug);
+
+        let mut p = Parser::new(
+            "
+                local a = 1;
+                local b = 1 + 2 .. '3' + 4 * 5 / '6';
+                local c = 'a'..'b' + a * b;
+            ",
+        );
+
+        assert!(p.parse().is_ok());
+
+        for ci in 0..p.emiter().pc() {
+            if let Some(c) = p.emiter().get_code(ci) {
+                println!("{}", c);
+            }
+        }
     }
 }

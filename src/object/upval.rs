@@ -1,10 +1,7 @@
-use super::VarKind;
-
 pub(crate) struct UpvalDesc {
     pub(crate) name: String,
     pub(crate) instack: bool,
     pub(crate) idx: usize,
-    pub(crate) kind: VarKind,
 }
 
 impl UpvalDesc {
@@ -13,7 +10,6 @@ impl UpvalDesc {
             name: String::from(name),
             instack: false,
             idx: 0,
-            kind: VarKind::UNKNOW,
         }
     }
 }

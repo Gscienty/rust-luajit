@@ -1,6 +1,8 @@
 use crate::code::{codelimit, InterCode};
 
-use super::{BinOpr, Expr, ExprValue, ParseErr, Parser};
+use crate::object::{Expr, ExprValue, RefValue};
+
+use super::{BinOpr, ParseErr, Parser};
 
 pub(super) struct ParseReg<'s> {
     p: &'s mut Parser,
@@ -73,14 +75,33 @@ impl<'s> ParseReg<'s> {
         }
     }
 
+    pub(super) fn exp_torefvalue(&self, exp: &Expr) -> Result<RefValue, ParseErr> {
+        if exp.hasjump() {
+            return Err(ParseErr::BadUsage);
+        }
+
+        match &exp.value {
+            ExprValue::Bool(v) => Ok(RefValue::from(*v)),
+            ExprValue::Nil => Ok(RefValue::new()),
+            ExprValue::String(v) => Ok(RefValue::from(v.as_str())),
+            ExprValue::Integer(v) => Ok(RefValue::from(*v)),
+            ExprValue::Float(v) => Ok(RefValue::from(*v)),
+            ExprValue::Const(idx) => match self.p.actvar.get(*idx) {
+                Some(v) => Ok(v.val.clone()),
+                _ => Err(ParseErr::BadUsage),
+            },
+            _ => Err(ParseErr::BadUsage),
+        }
+    }
+
     pub(super) fn infix(&mut self, op: BinOpr, exp: Expr) -> Result<Expr, ParseErr> {
         log::debug!("parse infix, op: {}", op);
 
-        let exp = self.p.parse_var().discharge_tovar(exp)?;
+        let exp = self.p.pvar().discharge_tovar(exp)?;
 
         match op {
-            BinOpr::AND => self.p.parse_code().goiftrue(exp),
-            BinOpr::OR => self.p.parse_code().goiffalse(exp),
+            BinOpr::AND => self.p.pcode().goiftrue(exp),
+            BinOpr::OR => self.p.pcode().goiffalse(exp),
             BinOpr::ADD
             | BinOpr::SUB
             | BinOpr::MUL
@@ -104,7 +125,7 @@ impl<'s> ParseReg<'s> {
     }
 
     pub(super) fn discharge_toreg(&mut self, exp: Expr, reg: usize) -> Result<Expr, ParseErr> {
-        let exp = self.p.parse_var().discharge_tovar(exp)?;
+        let exp = self.p.pvar().discharge_tovar(exp)?;
 
         let tj = exp.true_jumpto;
         let fj = exp.false_jumpto;
@@ -170,39 +191,11 @@ impl<'s> ParseReg<'s> {
         match exp.value {
             ExprValue::Nonreloc(_) => Ok(exp),
             _ => {
-                self.p.reserver_regs(1);
-                self.discharge_toreg(exp, self.p.freereg - 1)
+                self.p.pfscope().reserver_regs(1);
+
+                let reg = self.p.fs.prop().freereg - 1;
+                self.discharge_toreg(exp, reg)
             }
-        }
-    }
-
-    pub(super) fn exps_free(&mut self, e1: Expr, e2: Expr) -> Result<(), ParseErr> {
-        match e1.value {
-            ExprValue::Nonreloc(r1) => match e2.value {
-                ExprValue::Nonreloc(r2) => {
-                    if r1 < r2 {
-                        self.p.free_reg(r2)?;
-                        self.p.free_reg(r1)?;
-                    } else {
-                        self.p.free_reg(r1)?;
-                        self.p.free_reg(r2)?;
-                    }
-                }
-                _ => self.p.free_reg(r1)?,
-            },
-            _ => match e2.value {
-                ExprValue::Nonreloc(r2) => self.p.free_reg(r2)?,
-                _ => {}
-            },
-        };
-
-        Ok(())
-    }
-
-    pub(super) fn exp_free(&mut self, exp: Expr) -> Result<(), ParseErr> {
-        match exp.value {
-            ExprValue::Nonreloc(reg) => self.p.free_reg(reg),
-            _ => Ok(()),
         }
     }
 
@@ -221,13 +214,12 @@ impl<'s> ParseReg<'s> {
 
     pub(super) fn exp_toreg(&mut self, exp: Expr, reg: usize) -> Result<Expr, ParseErr> {
         let mut exp = self.discharge_toreg(exp, reg)?;
-        match exp.value {
-            ExprValue::Jump(pc) => self
-                .p
-                .parse_code()
-                .jump_concatlist(&mut exp.true_jumpto, Some(pc))?,
-            _ => {}
-        };
+
+        if let ExprValue::Jump(pc) = exp.value {
+            self.p
+                .pcode()
+                .jump_concatlist(&mut exp.true_jumpto, Some(pc))?;
+        }
 
         if exp.hasjump() {
             let mut pf = None;
@@ -241,38 +233,34 @@ impl<'s> ParseReg<'s> {
                 pf = Some(self.p.emiter().emit_lfalseskip(reg));
                 pt = Some(self.p.emiter().emit_loadbool(reg, true));
 
-                self.p.parse_code().jump_patchtohere(fj)?;
+                self.p.pcode().jump_patchtohere(fj)?;
             }
 
             let final_pc = self.p.emiter().mark_pc();
 
-            self.p.parse_code().jump_patchlistaux(
-                exp.false_jumpto,
-                Some(final_pc),
-                Some(reg),
-                pf,
-            )?;
-            self.p.parse_code().jump_patchlistaux(
-                exp.true_jumpto,
-                Some(final_pc),
-                Some(reg),
-                pt,
-            )?;
+            self.p
+                .pcode()
+                .jump_patchlistaux(exp.false_jumpto, Some(final_pc), Some(reg), pf)?;
+            self.p
+                .pcode()
+                .jump_patchlistaux(exp.true_jumpto, Some(final_pc), Some(reg), pt)?;
         }
 
         Ok(Expr::nonreloc(reg))
     }
 
     pub(super) fn exp_tonextreg(&mut self, exp: Expr) -> Result<Expr, ParseErr> {
-        let exp = self.p.parse_var().discharge_tovar(exp)?;
+        let exp = self.p.pvar().discharge_tovar(exp)?;
 
-        self.exp_free(exp.clone())?;
-        self.p.reserver_regs(1);
-        self.exp_toreg(exp, self.p.freereg - 1)
+        self.p.pfscope().exp_free(&exp)?;
+        self.p.pfscope().reserver_regs(1);
+
+        let reg = self.p.fs.prop().freereg - 1;
+        self.exp_toreg(exp, reg)
     }
 
     pub(super) fn exp_toanyreg(&mut self, exp: Expr) -> Result<Expr, ParseErr> {
-        let exp = self.p.parse_var().discharge_tovar(exp)?;
+        let exp = self.p.pvar().discharge_tovar(exp)?;
 
         if matches!(exp.value, ExprValue::Nonreloc(_)) {
             Ok(exp)

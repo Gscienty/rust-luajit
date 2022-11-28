@@ -1,6 +1,6 @@
-use crate::{lexer::Token, match_token};
+use crate::{lexer::Token, match_token, object::Expr};
 
-use super::{BinOpr, Expr, ParseErr, Parser, UnOpr};
+use super::{BinOpr, ParseErr, Parser, UnOpr};
 
 pub(super) struct ParseExpr<'s> {
     p: &'s mut Parser,
@@ -25,11 +25,11 @@ impl<'s> ParseExpr<'s> {
         match self.p.lex(|x| x.token.clone()) {
             Token::Name(_name) => {
                 // parse name
-                self.p.parse_lex().skip();
+                self.p.plex().skip();
             }
             Token::Operator('[') => {
                 // parse `[`
-                self.p.parse_lex().skip();
+                self.p.plex().skip();
                 // parse exp
                 self.expr_exp()?;
                 // parse `]`
@@ -105,7 +105,7 @@ impl<'s> ParseExpr<'s> {
     pub(super) fn simple_exp(&mut self) -> Result<Expr, ParseErr> {
         log::debug!("parse simple_exp");
 
-        let expr = match self.p.parse_lex().current_token() {
+        let expr = match self.p.plex().current_token() {
             Token::Integer(val) => Expr::from(val),
             Token::Number(val) => Expr::from(val),
             Token::String(val) => Expr::from(val.as_str()),
@@ -113,7 +113,7 @@ impl<'s> ParseExpr<'s> {
             Token::True => Expr::from(true),
             Token::False => Expr::from(false),
             Token::Dots => {
-                if !self.p.fs.prop().proto.prop().is_vararg {
+                if !self.p.fs.prop().proto.prop().vararg {
                     return Err(ParseErr::BadUsage);
                 }
                 Expr::vararg(self.p.emiter().emit_vararg())
@@ -124,15 +124,15 @@ impl<'s> ParseExpr<'s> {
             }
             Token::Function => {
                 // parse `function`
-                self.p.parse_lex().skip();
+                self.p.plex().skip();
                 // parse body_stmt
-                self.p.parse_stmt().body_stmt(false)?;
+                self.p.pstmt().body_stmt(false)?;
 
                 return Ok(Expr::todo());
             }
             _ => return self.suffixed_exp(),
         };
-        self.p.parse_lex().skip();
+        self.p.plex().skip();
 
         Ok(expr)
     }
@@ -141,27 +141,27 @@ impl<'s> ParseExpr<'s> {
     pub(super) fn sub_exp(&mut self, limit: u8) -> Result<(BinOpr, Expr), ParseErr> {
         log::debug!("parse sub_exp");
 
-        let unop = UnOpr::from(self.p.parse_lex().current_token());
+        let unop = UnOpr::from(self.p.plex().current_token());
 
         let mut exp = if matches!(unop, UnOpr::NoOpr) {
             // parse simple_exp
             self.simple_exp()?
         } else {
             // parse unop
-            self.p.parse_lex().skip();
+            self.p.plex().skip();
             // parse sub_exp
             let (_, exp) = self.sub_exp(BinOpr::UNARY_PRI)?;
-            self.p.parse_code().prefix(unop, exp)?
+            self.p.pcode().prefix(unop, exp)?
         };
 
-        let mut binop = BinOpr::from(self.p.parse_lex().current_token());
+        let mut binop = BinOpr::from(self.p.plex().current_token());
         while !matches!(binop, BinOpr::NoOpr) && binop.lpri() > limit {
             // parse binop
-            self.p.parse_lex().skip();
+            self.p.plex().skip();
 
-            exp = self.p.parse_reg().infix(binop, exp)?;
+            exp = self.p.preg().infix(binop, exp)?;
             let (nbop, nexp) = self.sub_exp(binop.rpri())?;
-            exp = self.p.parse_code().posfix(binop, exp, nexp)?;
+            exp = self.p.pcode().posfix(binop, exp, nexp)?;
 
             binop = nbop;
         }
@@ -178,11 +178,11 @@ impl<'s> ParseExpr<'s> {
     }
 
     // exprlist_exp -> expr { `,` expr }
-    pub(super) fn exprlist_exp(&mut self) -> Result<usize, ParseErr> {
+    pub(super) fn exprlist_exp(&mut self) -> Result<(usize, Expr), ParseErr> {
         log::debug!("parse exprlist_exp");
 
         let mut n = 1;
-        self.expr_exp()?;
+        let mut exp = self.expr_exp()?;
 
         while self.p.lex_mut(|x| match &x.token {
             Token::Operator(',') => {
@@ -191,11 +191,11 @@ impl<'s> ParseExpr<'s> {
             }
             _ => false,
         }) {
-            self.expr_exp()?;
+            exp = self.expr_exp()?;
             n += 1;
         }
 
-        Ok(n)
+        Ok((n, exp))
     }
 
     // primary_exp ::= name | `(` exp `)`
@@ -205,19 +205,19 @@ impl<'s> ParseExpr<'s> {
         match self.p.lex(|x| x.token.clone()) {
             Token::Operator('(') => {
                 // parse `(`
-                self.p.parse_lex().skip();
+                self.p.plex().skip();
                 // parse exp
                 let exp = self.expr_exp()?;
                 // parse `)`
                 match_token!(consume: self.p, Token::Operator(')'))?;
 
-                self.p.parse_var().discharge_tovar(exp)
+                self.p.pvar().discharge_tovar(exp)
             }
-            Token::Name(_name) => {
+            Token::Name(name) => {
                 // parse name
-                self.p.parse_lex().skip();
+                self.p.plex().skip();
 
-                Ok(Expr::todo())
+                self.p.pvar().single_var(name.as_str())
             }
             _ => Err(ParseErr::BadUsage),
         }
@@ -230,7 +230,7 @@ impl<'s> ParseExpr<'s> {
         match self.p.lex(|x| x.token.clone()) {
             Token::Operator('(') => {
                 // parse `(`
-                self.p.parse_lex().skip();
+                self.p.plex().skip();
                 // parse exprlist_exp
                 self.exprlist_exp()?;
                 // parse `)`
@@ -241,7 +241,7 @@ impl<'s> ParseExpr<'s> {
             }
             Token::String(_str) => {
                 // parse string
-                self.p.parse_lex().skip();
+                self.p.plex().skip();
             }
             _ => return Err(ParseErr::BadUsage),
         }
@@ -259,13 +259,13 @@ impl<'s> ParseExpr<'s> {
             match self.p.lex(|x| x.token.clone()) {
                 Token::Operator('.') => {
                     // parse '.'
-                    self.p.parse_lex().skip();
+                    self.p.plex().skip();
                     // parse name
-                    let _name = self.p.parse_lex().name()?;
+                    let _name = self.p.plex().name()?;
                 }
                 Token::Operator('[') => {
                     // parse `[`
-                    self.p.parse_lex().skip();
+                    self.p.plex().skip();
                     // parse exp
                     self.expr_exp()?;
                     // parse `]`
@@ -273,9 +273,9 @@ impl<'s> ParseExpr<'s> {
                 }
                 Token::Operator(':') => {
                     // parse `:`
-                    self.p.parse_lex().skip();
+                    self.p.plex().skip();
                     // parse name
-                    let _name = self.p.parse_lex().name()?;
+                    let _name = self.p.plex().name()?;
                     // parse funcargs_exp
                     self.funcargs_exp()?;
                 }

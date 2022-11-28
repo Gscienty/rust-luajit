@@ -1,32 +1,33 @@
 use super::RefValue;
 
-#[derive(Clone, Copy)]
-pub(crate) enum VarKind {
-    REG,
-    CONST,
-    TOCLOSE,
-    CTC,
-
-    UNKNOW,
-}
-
-pub(crate) struct VarDesc {
-    pub(crate) kind: VarKind,
-    pub(crate) r_idx: usize,
-    pub(crate) p_idx: usize,
+#[derive(Clone)]
+pub(crate) struct Var {
     pub(crate) name: String,
 
-    pub(crate) k: RefValue,
+    pub(crate) kind: VarKind,
+
+    pub(crate) val: RefValue,
+
+    pub(crate) r_idx: usize,
+    pub(crate) p_idx: usize,
 }
 
-impl VarDesc {
-    pub(crate) fn new(name: &str, kind: VarKind) -> Self {
-        VarDesc {
-            kind,
+#[derive(Clone, Copy)]
+pub(crate) enum VarKind {
+    REG,     // regular
+    CTC,     // compile time constant
+    TOCLOSE, // to be closed
+    CONST,   // constant
+}
+
+impl Var {
+    pub(crate) fn new(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            kind: VarKind::REG,
+            val: RefValue::new(),
             r_idx: 0,
             p_idx: 0,
-            name: String::from(name),
-            k: RefValue::new(),
         }
     }
 }

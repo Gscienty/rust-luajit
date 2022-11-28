@@ -1,9 +1,9 @@
 mod binopr;
 mod emit;
 mod errors;
-mod expr;
 mod parse;
 mod parse_expr;
+mod parse_func;
 mod parse_lex;
 mod parse_reg;
 mod parse_stmt;
@@ -12,9 +12,9 @@ mod unopr;
 
 pub(super) use binopr::*;
 pub(super) use emit::*;
-pub(super) use expr::*;
 pub(super) use parse_code::*;
 pub(super) use parse_expr::*;
+pub(super) use parse_func::*;
 pub(super) use parse_lex::*;
 pub(super) use parse_reg::*;
 pub(super) use parse_stmt::*;

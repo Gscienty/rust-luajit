@@ -242,6 +242,10 @@ impl<'s> Emiter<'s> {
         self.emit(InterCode::GETTABLE(255, rb as u8, rc as u8))
     }
 
+    pub(super) fn emit_tbc(&mut self, ra: usize) -> usize {
+        self.emit(InterCode::TBC(ra as u8))
+    }
+
     pub(super) fn set_ra(&mut self, pc: usize, ra: usize) {
         let ra = ra as u8;
 
@@ -283,6 +287,7 @@ impl<'s> Emiter<'s> {
                 InterCode::GETI(_, rb, rc) => InterCode::GETI(ra, rb, rc),
                 InterCode::GETFIELD(_, rb, rc) => InterCode::GETFIELD(ra, rb, rc),
                 InterCode::GETTABLE(_, rb, rc) => InterCode::GETTABLE(ra, rb, rc),
+                InterCode::VARARG(_, rb) => InterCode::VARARG(ra, rb),
                 _ => *c,
             };
 
@@ -305,6 +310,7 @@ impl<'s> Emiter<'s> {
         self.modify_code(pc, |c| {
             *c = match *c {
                 InterCode::VARARG(ra, _) => InterCode::VARARG(ra, rc),
+                // TODO call
                 _ => *c,
             };
 

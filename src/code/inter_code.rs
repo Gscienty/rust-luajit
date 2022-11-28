@@ -59,6 +59,7 @@ pub(crate) enum InterCode {
     GETI(u8, u8, u8),      // rA, rB, rC; R[rA] := U[rB][rC]
     GETFIELD(u8, u8, u8),  // rA, rB, rC; R[rA] := R[rB][K[rC]]
     GETTABLE(u8, u8, u8),  // rA, rB, rC; R[rA] := R[rB][R[rC]]
+    TBC(u8),               // mark vA to be close
 }
 
 impl Display for InterCode {
@@ -124,6 +125,7 @@ impl Display for InterCode {
             Self::GETI(ra, rb, rc) => write!(f, "GETI rA({}) rB({}) rC({})", *ra, *rb, *rc),
             Self::GETFIELD(ra, rb, rc) => write!(f, "GETFIELD rA({}) rB({}) rC({})", *ra, *rb, *rc),
             Self::GETTABLE(ra, rb, rc) => write!(f, "GETTABLE rA({}) rB({}) rC({})", *ra, *rb, *rc),
+            Self::TBC(ra) => write!(f, "TBC vA({})", *ra),
         }
     }
 }
