@@ -7,8 +7,8 @@ use crate::{
 };
 
 use super::{
-    Emiter, FuncState, ParseCode, ParseErr, ParseExpr, ParseFunc, ParseGTab, ParseLex, ParseReg,
-    ParseStmt, ParseVar,
+    Emiter, FuncState, ParseCode, ParseErr, ParseExpr, ParseFunc, ParseGTab, ParseLabel, ParseLex,
+    ParseReg, ParseStmt, ParseVar,
 };
 
 pub(crate) struct Parser {
@@ -24,13 +24,13 @@ pub(crate) struct Parser {
     envn: String,
 
     pub(super) actvar: Vec<Var>,
-    goto: Vec<LabelDesc>,
-    label: Vec<LabelDesc>,
+    pub(super) goto: Vec<LabelDesc>,
+    pub(super) label: Vec<LabelDesc>,
 
-    pub(super) codes: Vec<InterCode>,
+    pub(crate) codes: Vec<InterCode>,
     pub(super) last_target: usize,
 
-    pub(super) constant_pool: Rc<RefCell<ConstantPool>>,
+    pub(crate) constant_pool: Rc<RefCell<ConstantPool>>,
 }
 
 impl Parser {
@@ -97,14 +97,6 @@ impl Parser {
         &self.envn
     }
 
-    pub(super) fn labelcnt(&self) -> usize {
-        self.label.len()
-    }
-
-    pub(super) fn gotocnt(&self) -> usize {
-        self.goto.len()
-    }
-
     pub(super) fn emiter(&mut self) -> Emiter {
         Emiter::new(self)
     }
@@ -141,8 +133,12 @@ impl Parser {
         ParseGTab::new(self)
     }
 
+    pub(super) fn plabel<'s>(&'s mut self) -> ParseLabel {
+        ParseLabel::new(self)
+    }
+
     pub(crate) fn parse(&mut self) -> Result<(), ParseErr> {
-        self.lexer.token_next(); // read first token
+        self.lexer.token_next()?; // read first token
 
         self.pstmt().stmtlist()
     }
@@ -159,9 +155,33 @@ mod tests {
 
         let mut p = Parser::new(
             "
-                local a = 1;
-                local b = 1 + 2 .. '3' + 4 * 5 / '6';
-                local c = 'a'..'b' + a * b;
+                for i = 1, 5, 2 do
+                    local t = 1;
+                end
+
+                local i = 5;
+
+                if 3 + 2 > i then
+                    local a = 1;
+                    local b = 5;
+                    local c = a + b;
+                elseif 3 + 2 < i then
+                    local d = 4;
+                else
+                    local f = 7;
+                end
+
+                repeat
+                    local a = 1;
+                    local b = 1 + 2 .. '3' + 4 * 5 / '6';
+                    local c = 'a'..'b' + a * b;
+
+                    ::here::
+                    local d = 5+6;
+                    goto here;
+
+                    break;
+                until 1 + 2 > 3;
             ",
         );
 
@@ -169,7 +189,7 @@ mod tests {
 
         for ci in 0..p.emiter().pc() {
             if let Some(c) = p.emiter().get_code(ci) {
-                println!("{}", c);
+                println!("{}\t{}", ci, c);
             }
         }
     }

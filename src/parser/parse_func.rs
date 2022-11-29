@@ -1,6 +1,6 @@
 use crate::object::{Expr, ExprValue, LocVar, Var, VarKind};
 
-use super::{ParseErr, Parser};
+use super::{Block, ParseErr, Parser};
 
 pub(super) struct ParseFunc<'s> {
     p: &'s mut Parser,
@@ -142,6 +142,54 @@ impl<'s> ParseFunc<'s> {
                 _ => {}
             },
         };
+
+        Ok(())
+    }
+
+    pub(super) fn enterblock(&mut self, isloop: bool) {
+        log::debug!("enter block, nactvar == {}", self.p.fs.prop().nactvar);
+
+        let block = Block::new();
+
+        block.prop_mut().is_loop = isloop;
+        block.prop_mut().nactvar = self.p.fs.prop().nactvar;
+        block.prop_mut().firstlabel = self.p.label.len();
+        block.prop_mut().firstgoto = self.p.goto.len();
+        block.prop_mut().inside_tobeclosed = self.p.fs.prop().block.prop().inside_tobeclosed;
+        block.prop_mut().prev = Some(self.p.fs.prop().block.clone());
+
+        self.p.fs.prop_mut().block = block;
+    }
+
+    pub(super) fn leaveblock(&mut self) -> Result<(), ParseErr> {
+        log::debug!("leave block, nactvar == {}", self.p.fs.prop().nactvar);
+
+        let block = self.p.fs.prop().block.clone();
+
+        let level = self.reglevel(block.prop().nactvar);
+        self.p.pvar().removevars(level);
+
+        let hasclose = if block.prop().is_loop {
+            self.p.plabel().createlabel("break", false)?
+        } else {
+            false
+        };
+
+        if !hasclose && block.prop().prev.is_some() && block.prop().upval {
+            self.p.emiter().emit_close(level);
+        }
+
+        self.p.fs.prop_mut().freereg = level;
+        while self.p.label.len() > block.prop().firstlabel {
+            self.p.label.pop();
+        }
+
+        if let Some(prev_block) = &block.prop().prev {
+            self.p.fs.prop_mut().block = prev_block.clone();
+            self.p.plabel().movegotosout(&block)?;
+        } else if block.prop().firstgoto < self.p.goto.len() {
+            return Err(ParseErr::BadUsage);
+        }
 
         Ok(())
     }

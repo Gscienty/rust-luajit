@@ -10,19 +10,13 @@ pub(super) struct ParseLex<'s> {
 macro_rules! match_token {
     (consume: $parser: expr, $token: pat) => {
         $parser.lex_mut(|x| match &x.token {
-            $token => {
-                x.token_next();
-                Ok(())
-            }
+            $token => x.token_next(),
             _ => Err(ParseErr::UnexpectedSymbol),
         })
     };
     (test_consume: $parser: expr, $token: pat) => {
         $parser.lex_mut(|x| match &x.token {
-            $token => {
-                x.token_next();
-                true
-            }
+            $token => x.token_next().is_ok(),
             _ => false,
         })
     };
@@ -40,7 +34,7 @@ impl<'s> ParseLex<'s> {
         self.p.lex_mut(|x| match &x.token {
             Token::Name(v) => {
                 let v = String::from(v);
-                x.token_next();
+                x.token_next()?;
 
                 Ok(v)
             }
@@ -48,8 +42,8 @@ impl<'s> ParseLex<'s> {
         })
     }
 
-    pub(super) fn skip(&mut self) {
-        self.p.lex_mut(|x| x.token_next());
+    pub(super) fn skip(&mut self) -> Result<(), ParseErr> {
+        self.p.lex_mut(|x| x.token_next())
     }
 
     pub(super) fn current_token(&self) -> Token {

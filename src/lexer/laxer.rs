@@ -31,20 +31,17 @@ impl Lexer {
         }
     }
 
-    pub(crate) fn token_next(&mut self) {
+    pub(crate) fn token_next(&mut self) -> Result<(), ParseErr> {
         self.last_line = self.line_number;
         if matches!(self.lookahead_token, Token::EOF) {
-            self.token = if let Ok(token) = self.scan() {
-                token
-            } else {
-                Token::EOF
-            }
+            self.token = self.scan()?;
         } else {
             self.token = self.lookahead_token.clone();
             self.lookahead_token = Token::EOF;
         }
 
-        log::debug!("token next: {}", self.token)
+        log::debug!("token next: {}", self.token);
+        Ok(())
     }
 
     pub(crate) fn token_lookahead(&mut self) -> Result<Token, ParseErr> {
@@ -124,13 +121,13 @@ impl Lexer {
         }
     }
 
-    fn parse_string(&mut self) -> Result<Token, &str> {
+    fn parse_string(&mut self) -> Result<Token, ParseErr> {
         let delim = self.current;
         self.save_next();
 
         while self.current != delim {
             match self.current {
-                None | Some('\r' | '\n') => return Err("bad usage"),
+                None | Some('\r' | '\n') => return Err(ParseErr::BadUsage),
                 Some('\\') => {
                     let chr = match self.next() {
                         Some('n') => '\n',
@@ -168,16 +165,17 @@ impl Lexer {
                             ((self
                                 .next()
                                 .and_then(|x| x.to_digit(16))
-                                .ok_or("bad usage")?
+                                .ok_or(ParseErr::BadUsage)?
                                 << 4)
                                 | (self
                                     .next()
                                     .and_then(|x| x.to_digit(16))
-                                    .ok_or("bad usage")?)) as u8 as char
+                                    .ok_or(ParseErr::BadUsage)?)) as u8
+                                as char
                         }
                         Some('u') => {
                             if !matches!(self.next(), Some('{')) {
-                                return Err("bad usage");
+                                return Err(ParseErr::BadUsage);
                             }
                             let mut chr = 0u32;
                             loop {
@@ -185,10 +183,10 @@ impl Lexer {
                                 chr += self
                                     .current
                                     .and_then(|c| c.to_digit(16))
-                                    .ok_or("unexception hex")?;
+                                    .ok_or(ParseErr::BadUsage)?;
 
                                 if chr >= 0x110000 {
-                                    return Err("unexception unicode");
+                                    return Err(ParseErr::BadUsage);
                                 }
                                 if matches!(self.next(), Some('}')) {
                                     break;
@@ -209,7 +207,7 @@ impl Lexer {
                                     self.save((0x80 | ((chr >> 12) & 0x3f)) as u8 as char);
                                 } else {
                                     if chr >= 0xd800 && chr < 0xe000 {
-                                        return Err("unexception unicode");
+                                        return Err(ParseErr::BadUsage);
                                     }
                                     self.save((0xe0 | (chr >> 12)) as u8 as char);
                                 }
@@ -218,8 +216,8 @@ impl Lexer {
                                 (0x80 | (chr & 0x3f)) as u8 as char
                             }
                         }
-                        None => return Err("bad usage"),
-                        _ => return Err("bad usage"),
+                        None => return Err(ParseErr::BadUsage),
+                        _ => return Err(ParseErr::BadUsage),
                     };
 
                     self.save(chr);
@@ -238,7 +236,7 @@ impl Lexer {
         Ok(Token::String(value))
     }
 
-    fn parse_longstring(&mut self, sep: i32, is_comment: bool) -> Result<Token, &str> {
+    fn parse_longstring(&mut self, sep: i32, is_comment: bool) -> Result<Token, ParseErr> {
         self.save_next();
         if self.is_eol() {
             self.new_line();
@@ -259,7 +257,7 @@ impl Lexer {
                         self.clear();
                     }
                 }
-                None => return Err("bad usage"),
+                None => return Err(ParseErr::BadUsage),
                 _ => {
                     self.save_next();
                 }
@@ -276,7 +274,7 @@ impl Lexer {
         }
     }
 
-    fn scan(&mut self) -> Result<Token, &str> {
+    fn scan(&mut self) -> Result<Token, ParseErr> {
         self.token_buffer.clear();
         loop {
             if matches!(self.current, Some(chr) if chr.is_alphanumeric()) {
@@ -326,7 +324,7 @@ impl Lexer {
                     } else if sep == -1 {
                         break Ok(Token::Operator('['));
                     } else {
-                        break Err("bad usage");
+                        break Err(ParseErr::BadUsage);
                     }
                 }
                 Some('\"' | '\'') => break self.parse_string(),
@@ -422,7 +420,8 @@ impl Lexer {
         }
     }
 
-    fn number(&mut self) -> Result<Token, &str> {
+    fn number(&mut self) -> Result<Token, ParseErr> {
+        log::debug!("lex number");
         let mut allowable_symbol = true;
         let mut allowable_dot = true;
         let mut allowable_pflag = true;
@@ -430,24 +429,20 @@ impl Lexer {
 
         loop {
             match self.current {
-                Some('+' | '-') => {
-                    if !allowable_symbol {
-                        return Err("bad usage");
-                    }
-
+                Some('+' | '-') if allowable_symbol => {
                     self.save_next();
                     allowable_symbol = false;
                 }
                 Some('.') => {
                     if !allowable_dot {
-                        return Err("bad usage");
+                        return Err(ParseErr::BadUsage);
                     }
                     self.save_next();
                     allowable_dot = false;
                 }
                 Some('p') => {
                     if !allowable_pflag {
-                        return Err("bad usage");
+                        return Err(ParseErr::BadUsage);
                     }
                     self.save_next();
                     allowable_symbol = true;
@@ -457,7 +452,7 @@ impl Lexer {
                 }
                 Some('e') => {
                     if !allowable_eflag {
-                        return Err("bad usage");
+                        return Err(ParseErr::BadUsage);
                     }
                     self.save_next();
                     allowable_symbol = true;
@@ -478,7 +473,8 @@ impl Lexer {
         }
     }
 
-    fn parse_number(&mut self, start_off: usize, default_radix: u32) -> Result<Token, &str> {
+    fn parse_number(&mut self, start_off: usize, default_radix: u32) -> Result<Token, ParseErr> {
+        log::debug!("lex parse number, token_buffer: {}", self.token_buffer);
         if self.token_buffer.eq_ignore_ascii_case("nan") {
             return Ok(Token::Number(f64::NAN));
         }
@@ -534,12 +530,12 @@ impl Lexer {
             match chr {
                 'u' | 'i' => {
                     if !must_integer {
-                        return Err("bad usage");
+                        return Err(ParseErr::BadUsage);
                     }
                 }
                 '.' => {
                     if must_integer {
-                        return Err("bad usage");
+                        return Err(ParseErr::BadUsage);
                     }
                     is_float = true;
                     float_value = int_value as f64;
@@ -561,10 +557,10 @@ impl Lexer {
                 }
                 'p' | 'P' => {
                     if must_integer {
-                        return Err("bad usage");
+                        return Err(ParseErr::BadUsage);
                     }
                     if radix != 16 {
-                        return Err("bad radix");
+                        return Err(ParseErr::BadUsage);
                     }
                     if !is_float {
                         float_value = int_value as f64;
@@ -574,17 +570,17 @@ impl Lexer {
                     float_value = match self.parse_number(off, 16) {
                         Ok(Token::Number(value)) => float_value.powf(value),
                         Ok(Token::Integer(value)) => float_value.powi(value as i32),
-                        _ => return Err("bad p"),
+                        _ => return Err(ParseErr::BadUsage),
                     };
 
                     break;
                 }
                 'e' | 'E' => {
                     if must_integer {
-                        return Err("bad usage");
+                        return Err(ParseErr::BadUsage);
                     }
                     if radix != 10 {
-                        return Err("bad radix");
+                        return Err(ParseErr::BadUsage);
                     }
                     if !is_float {
                         float_value = int_value as f64;
@@ -594,7 +590,7 @@ impl Lexer {
                     float_value = match self.parse_number(off, 10) {
                         Ok(Token::Number(value)) => float_value.powf(value),
                         Ok(Token::Integer(value)) => float_value.powi(value as i32),
-                        _ => return Err("bad p"),
+                        _ => return Err(ParseErr::BadUsage),
                     };
 
                     break;
@@ -616,7 +612,7 @@ impl Lexer {
         })
     }
 
-    fn identifier(&mut self) -> Result<Token, &str> {
+    fn identifier(&mut self) -> Result<Token, ParseErr> {
         let identifier = match self.token_buffer.as_str() {
             "else" => Token::Else,
             "elseif" => Token::ElseIf,

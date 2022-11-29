@@ -1,5 +1,4 @@
 use crate::{
-    code::codelimit,
     lexer::Token,
     match_token,
     object::{Expr, ExprValue, Var, VarKind},
@@ -55,25 +54,67 @@ impl<'s> ParseStmt<'s> {
     }
 
     // test_then_block ::= [ `if` | `elseif` ] cond_exp `then` block_stmt
-    pub(super) fn test_then_block(&mut self, _escape: &mut usize) -> Result<(), ParseErr> {
+    pub(super) fn test_then_block(
+        &mut self,
+        escape: Option<usize>,
+    ) -> Result<Option<usize>, ParseErr> {
         log::debug!("parse test_then_block_stmt");
 
         // parse `if` | `elseif`
-        self.p.plex().skip();
+        self.p.plex().skip()?;
         // parse cond_exp
-        self.p.pexp().expr_exp()?;
+        let exp = self.p.pexp().expr_exp()?;
         // parse `then`
         match_token!(consume: self.p, Token::Then)?;
-        // parse block_stmt
-        self.block_stmt()?;
+        let jf = if match_token!(test: self.p, Token::Break) {
+            let exp = self.p.pcode().goiffalse(exp)?;
+            // parse `break`
+            self.p.plex().skip()?;
 
-        Ok(())
+            self.p.pfscope().enterblock(false);
+
+            match exp.true_jumpto {
+                Some(pc) => self.p.plabel().creategoto("break", pc)?,
+                _ => return Err(ParseErr::BadUsage),
+            }
+            // parse `;`
+            while match_token!(test_consume: self.p, Token::Operator(';')) {}
+
+            if self.block_follow(false) {
+                self.p.pfscope().leaveblock()?;
+                return Ok(escape);
+            } else {
+                Some(self.p.emiter().emit_jmp())
+            }
+        } else {
+            let exp = self.p.pcode().goiftrue(exp)?;
+            self.p.pfscope().enterblock(false);
+
+            exp.false_jumpto
+        };
+        // parse block_stmt
+        self.stmtlist()?;
+
+        self.p.pfscope().leaveblock()?;
+
+        let mut escape = escape;
+        if match_token!(test: self.p, Token::Else | Token::ElseIf) {
+            let pc = self.p.emiter().emit_jmp();
+            self.p.pcode().jump_concatlist(&mut escape, Some(pc))?;
+        }
+        self.p.pcode().jump_patchtohere(jf)?;
+
+        Ok(escape)
     }
 
     pub(super) fn block_stmt(&mut self) -> Result<(), ParseErr> {
         log::debug!("parse block_stmt");
 
+        self.p.pfscope().enterblock(false);
+
         self.stmtlist()?;
+
+        self.p.pfscope().leaveblock()?;
 
         Ok(())
     }
@@ -85,13 +126,13 @@ impl<'s> ParseStmt<'s> {
     pub(super) fn if_stmt(&mut self) -> Result<(), ParseErr> {
         log::debug!("parse if_stmt");
 
-        let mut escape_list = codelimit::NO_JMP;
+        let mut escape = None;
 
         // parse `if` cond_exp `then` block_stmt
-        self.test_then_block(&mut escape_list)?;
+        escape = self.test_then_block(escape)?;
         // parse `elseif` cond_exp `then` block_stmt
         while match_token!(test: self.p, Token::ElseIf) {
-            self.test_then_block(&mut escape_list)?;
+            escape = self.test_then_block(escape)?;
         }
         // parse `else` block
         if match_token!(test_consume: self.p, Token::Else) {
@@ -99,6 +140,7 @@ impl<'s> ParseStmt<'s> {
         }
         // parse `end`
         match_token!(consume: self.p, Token::End)?;
+        self.p.pcode().jump_patchtohere(escape)?;
 
         Ok(())
     }
@@ -107,16 +149,25 @@ impl<'s> ParseStmt<'s> {
     pub(super) fn while_stmt(&mut self) -> Result<(), ParseErr> {
         log::debug!("parse where_stmt");
 
+        let initpc = self.p.emiter().pc();
+
         // parse `while`
-        self.p.plex().skip();
+        self.p.plex().skip()?;
         // parse cond_exp
-        self.p.pexp().expr_exp()?;
+        let exitpc = self.p.pexp().cond_exp()?;
+        // enter loop
+        self.p.pfscope().enterblock(true);
         // parse `do`
         match_token!(consume: self.p, Token::Do)?;
         // parse block_stmt
         self.block_stmt()?;
+        // jump back
+        let backpc = self.p.emiter().emit_jmp();
+        self.p.pcode().jump_patchlist(Some(backpc), Some(initpc))?;
         // parse `end`
         match_token!(consume: self.p, Token::End)?;
+        self.p.pfscope().leaveblock()?;
+        self.p.pcode().jump_patchtohere(Some(exitpc))?;
 
         Ok(())
     }
@@ -124,38 +175,79 @@ impl<'s> ParseStmt<'s> {
     // forbody_stmt ::= `do` block_stmt
     pub(super) fn forbody_stmt(
         &mut self,
-        _base: u32,
-        _nvars: u32,
-        _isgen: bool,
+        base: usize,
+        nvars: usize,
+        isgen: bool,
     ) -> Result<(), ParseErr> {
         log::debug!("parse forbody_stmt");
 
         // parse `do`
         match_token!(consume: self.p, Token::Do)?;
+
+        let prep = if isgen {
+            self.p.emiter().emit_tforprep(base)
+        } else {
+            self.p.emiter().emit_forprep(base)
+        };
+
+        self.p.pfscope().enterblock(false);
+        self.p.pfscope().adjust_localvars(nvars);
+        self.p.pfscope().reserver_regs(nvars);
+
         // parse block_stmt
         self.block_stmt()?;
+
+        self.p.pfscope().leaveblock()?;
+
+        let pc = self.p.emiter().pc();
+        self.p.pcode().patch_forjump(prep, pc, false);
+        if isgen {
+            self.p.emiter().emit_tforcall(base, nvars);
+        }
+        let endfor = if isgen {
+            self.p.emiter().emit_tforloop(base)
+        } else {
+            self.p.emiter().emit_forloop(base)
+        };
+        self.p.pcode().patch_forjump(endfor, prep + 1, true);
 
         Ok(())
     }
 
     // fornum_stmt ::=  name `=` exp `,` exp [`,` exp] forbody_stmt
-    pub(super) fn fornum_stmt(&mut self, _varname: &str) -> Result<(), ParseErr> {
+    pub(super) fn fornum_stmt(&mut self, name: &str) -> Result<(), ParseErr> {
         log::debug!("parse fornum_stmt");
+
+        let base = self.p.fs.prop().freereg;
+
+        self.p.pfscope().pushloc(Var::new("(for state)"));
+        self.p.pfscope().pushloc(Var::new("(for state)"));
+        self.p.pfscope().pushloc(Var::new("(for state)"));
+        self.p.pfscope().pushloc(Var::new(name));
 
         // parse `=`
         match_token!(consume: self.p, Token::Operator('='))?;
         // parse exp (initial value)
-        self.p.pexp().expr_exp()?;
+        self.p.pexp().exprtoreg_exp()?;
         // parse `,`
         match_token!(consume: self.p, Token::Operator(','))?;
-        // parse exp (end value)
-        self.p.pexp().expr_exp()?;
+        // parse exp (limit value)
+        self.p.pexp().exprtoreg_exp()?;
         // parse [ `,` exp ] (step value)
         if match_token!(test_consume: self.p, Token::Operator(',')) {
-            self.p.pexp().expr_exp()?;
+            // parse exp (step value)
+            self.p.pexp().exprtoreg_exp()?;
+        } else {
+            let freereg = self.p.fs.prop().freereg;
+
+            // default step 1
+            self.p.emiter().emit_loadint(freereg, 1);
+            self.p.pfscope().reserver_regs(1);
         }
+
+        self.p.pfscope().adjust_localvars(3);
         // parse forbody_stmt
-        self.forbody_stmt(0, 1, false)?;
+        self.forbody_stmt(base, 1, false)?;
 
         Ok(())
     }
@@ -182,8 +274,10 @@ impl<'s> ParseStmt<'s> {
     pub(super) fn for_stmt(&mut self) -> Result<(), ParseErr> {
         log::debug!("parse for_stmt");
 
+        self.p.pfscope().enterblock(true);
+
         // parse `for`
-        self.p.plex().skip();
+        self.p.plex().skip()?;
         // parse name
         let var_name = ParseLex::new(self.p).name()?;
         // parse (fornum_stmt | forlist_stmt)
@@ -195,6 +289,8 @@ impl<'s> ParseStmt<'s> {
         // parse `end`
         match_token!(consume: self.p, Token::End)?;
 
+        self.p.pfscope().leaveblock()?;
+
         Ok(())
     }
 
@@ -203,7 +299,7 @@ impl<'s> ParseStmt<'s> {
         log::debug!("parse do_stmt");
 
         // parse `do`
-        self.p.plex().skip();
+        self.p.plex().skip()?;
         // parse block_stmt
         self.block_stmt()?;
         // parse `end`
@@ -216,14 +312,35 @@ impl<'s> ParseStmt<'s> {
     pub(super) fn repeat_stmt(&mut self) -> Result<(), ParseErr> {
         log::debug!("parse repeat_stmt");
 
+        let initpc = self.p.emiter().pc();
+        self.p.pfscope().enterblock(true);
+        self.p.pfscope().enterblock(false);
+
         // parse `repeat`
-        self.p.plex().skip();
+        self.p.plex().skip()?;
         // parse block_stmt
-        self.block_stmt()?;
+        self.stmtlist()?;
         // parse `until`
         match_token!(consume: self.p, Token::Until)?;
         // parse cond_exp
-        self.p.pexp().expr_exp()?;
+        let mut condexit = self.p.pexp().cond_exp()?;
+
+        let upval = self.p.fs.prop().block.prop().upval;
+        let nactvar = self.p.fs.prop().block.prop().nactvar;
+        self.p.pfscope().leaveblock()?;
+
+        if upval {
+            let exit = self.p.emiter().emit_jmp();
+            self.p.pcode().jump_patchtohere(Some(condexit))?;
+            self.p.emiter().emit_close(nactvar);
+            condexit = self.p.emiter().emit_jmp();
+            self.p.pcode().jump_patchtohere(Some(exit))?;
+        }
+
+        self.p
+            .pcode()
+            .jump_patchlist(Some(condexit), Some(initpc))?;
+        self.p.pfscope().leaveblock()?;
 
         Ok(())
     }
@@ -240,12 +357,12 @@ impl<'s> ParseStmt<'s> {
                     // parse name
                     Token::Name(name) => {
                         self.p.pfscope().pushloc(Var::new(name.as_str()));
-                        self.p.plex().skip();
+                        self.p.plex().skip()?;
                         _nparams += 1;
                     }
                     // parse `...`
                     Token::Dots => {
-                        self.p.plex().skip();
+                        self.p.plex().skip()?;
                         isvararg = true;
                     }
                     _ => return Err(ParseErr::BadUsage),
@@ -286,7 +403,7 @@ impl<'s> ParseStmt<'s> {
         log::debug!("parse fieldsel_stmt");
 
         // parse [`.` | `:`]
-        self.p.plex().skip();
+        self.p.plex().skip()?;
         // parse name
         let _name = self.p.plex().name()?;
 
@@ -318,7 +435,7 @@ impl<'s> ParseStmt<'s> {
         log::debug!("parse func_stmt");
 
         // parse `function`
-        self.p.plex().skip();
+        self.p.plex().skip()?;
         // parse funcname_stmt
         let (ismethod, _) = self.funcname_stmt()?;
         // parse body_stmt
@@ -425,7 +542,9 @@ impl<'s> ParseStmt<'s> {
         }
 
         if let Some(level) = toclose {
-            // TODO mark to be close
+            self.p.fs.prop().block.prop_mut().upval = true;
+            self.p.fs.prop().block.prop_mut().inside_tobeclosed = true;
+            self.p.fs.prop().block.prop_mut().needclose = true;
 
             let vidx = self.p.pfscope().reglevel(level);
             self.p.emiter().emit_tbc(vidx);
@@ -439,7 +558,7 @@ impl<'s> ParseStmt<'s> {
         log::debug!("parse local_stmt");
 
         // parse `local`
-        self.p.plex().skip();
+        self.p.plex().skip()?;
         // parse `function`
         if match_token!(test_consume: self.p, Token::Function) {
             // parse localfunc_stmt
@@ -455,11 +574,22 @@ impl<'s> ParseStmt<'s> {
         log::debug!("parse label_stmt");
 
         // parse `::`
-        self.p.plex().skip();
+        self.p.plex().skip()?;
         // parse name
-        let _name = self.p.plex().name()?;
+        let name = self.p.plex().name()?;
         // parse `::`
-        self.p.plex().skip();
+        match_token!(consume: self.p, Token::Label)?;
+
+        // parse next stmt
+        while match_token!(test: self.p, Token::Operator(';') | Token::Label) {
+            self.stmt()?;
+        }
+        let islast = self.block_follow(false);
+
+        log::debug!("label_stmt islast == {}", islast);
+
+        self.p.plabel().repeated(&name)?;
+        self.p.plabel().createlabel(&name, islast)?;
 
         Ok(())
     }
@@ -469,7 +599,7 @@ impl<'s> ParseStmt<'s> {
         log::debug!("parse return_stmt");
 
         // parse `return`
-        self.p.plex().skip();
+        self.p.plex().skip()?;
 
         // parse exprlist_exp
         if !self.block_follow(true) && !match_token!(test: self.p, Token::Operator(';')) {
@@ -487,9 +617,10 @@ impl<'s> ParseStmt<'s> {
         log::debug!("parse break_stmt");
 
         // parse `break`
-        self.p.plex().skip();
+        self.p.plex().skip()?;
 
-        Ok(())
+        let pc = self.p.emiter().pc();
+        self.p.plabel().creategoto("break", pc)
     }
 
     // goto_stmt ::= `goto` name
@@ -497,9 +628,25 @@ impl<'s> ParseStmt<'s> {
         log::debug!("parse goto_stmt");
 
         // parse `goto`
-        self.p.plex().skip();
+        self.p.plex().skip()?;
+
         // parse name
-        let _name = self.p.plex().name()?;
+        let name = self.p.plex().name()?;
+
+        if let Some(label) = self.p.plabel().findlabel(&name) {
+            let blnactvar = self.p.fs.prop().block.prop().nactvar;
+            let bllevel = self.p.pfscope().reglevel(blnactvar);
+
+            if self.p.pfscope().nvars_stack() > bllevel {
+                self.p.emiter().emit_close(bllevel);
+            }
+
+            let pc = self.p.emiter().emit_jmp();
+            self.p.pcode().jump_patchlist(Some(pc), Some(label.pc))?;
+        } else {
+            let pc = self.p.emiter().pc();
+            self.p.plabel().creategoto(&name, pc)?;
+        }
 
         Ok(())
     }
@@ -543,21 +690,20 @@ impl<'s> ParseStmt<'s> {
     pub(super) fn stmt(&mut self) -> Result<(), ParseErr> {
         match self.p.lex(|x| x.token.clone()) {
             Token::Operator(';') => self.p.plex().skip(),
-            Token::If => self.if_stmt()?,
-            Token::While => self.while_stmt()?,
-            Token::Do => self.do_stmt()?,
-            Token::For => self.for_stmt()?,
-            Token::Repeat => self.repeat_stmt()?,
-            Token::Function => self.func_stmt()?,
-            Token::Local => self.local_stmt()?,
-            Token::Label => self.label_stmt()?,
-            Token::Return => self.return_stmt()?,
-            Token::Break => self.break_stmt()?,
-            Token::Goto => self.goto_stmt()?,
-            _ => self.expr_stmt()?,
-        }
+            Token::Local => self.local_stmt(),
+            Token::Label => self.label_stmt(),
+            Token::Break => self.break_stmt(),
+            Token::Goto => self.goto_stmt(),
+            Token::Do => self.do_stmt(),
+            Token::While => self.while_stmt(),
+            Token::Repeat => self.repeat_stmt(),
+            Token::For => self.for_stmt(),
+            Token::If => self.if_stmt(),
 
-        Ok(())
+            Token::Function => self.func_stmt(),
+            Token::Return => self.return_stmt(),
+            _ => self.expr_stmt(),
+        }
     }
 
     pub(super) fn stmtlist(&mut self) -> Result<(), ParseErr> {

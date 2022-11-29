@@ -367,9 +367,25 @@ impl<'s> ParseCode<'s> {
         }
     }
 
+    pub(super) fn jump_patchlist(
+        &mut self,
+        list: Option<usize>,
+        pc: Option<usize>,
+    ) -> Result<(), ParseErr> {
+        self.jump_patchlistaux(list, pc, None, pc)
+    }
+
     pub(super) fn jump_patchtohere(&mut self, list: Option<usize>) -> Result<(), ParseErr> {
         let here = self.p.emiter().mark_pc();
-        self.jump_patchlistaux(list, Some(here), None, Some(here))
+        self.jump_patchlist(list, Some(here))
+    }
+
+    pub(super) fn patch_forjump(&mut self, pc: usize, dest: usize, back: bool) {
+        let offset = dest as i32 - (pc + 1) as i32;
+
+        self.p
+            .emiter()
+            .set_bx(pc, if back { -offset } else { offset });
     }
 
     pub(super) fn patch_testreg(&mut self, node: usize, reg: Option<usize>) -> bool {
@@ -419,7 +435,7 @@ impl<'s> ParseCode<'s> {
     }
 
     fn jump_patch(&mut self, pc: usize, dpc: usize) -> Result<(), ParseErr> {
-        let offset = dpc - (pc + 1);
+        let offset = dpc as i64 - (pc + 1) as i64;
         self.p.emiter().set_sj(pc, offset);
 
         Ok(())
@@ -564,7 +580,7 @@ impl<'s> ParseCode<'s> {
         let (op, e1, e2) = match op {
             BinOpr::LT | BinOpr::LE => (op, e1, e2),
             BinOpr::GE => (BinOpr::LE, e2, e1),
-            BinOpr::GT => (BinOpr::GT, e2, e1),
+            BinOpr::GT => (BinOpr::LT, e2, e1),
             _ => return Err(ParseErr::BadUsage),
         };
 
@@ -591,6 +607,7 @@ impl<'s> ParseCode<'s> {
                 _ => unreachable!(),
             };
 
+            log::debug!("{}", op);
             match op {
                 BinOpr::LT => self.p.emiter().emit_gti(r2, imm as u32, true),
                 BinOpr::LE => self.p.emiter().emit_gei(r2, imm as u32, true),

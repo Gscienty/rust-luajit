@@ -246,6 +246,30 @@ impl<'s> Emiter<'s> {
         self.emit(InterCode::TBC(ra as u8))
     }
 
+    pub(super) fn emit_close(&mut self, ra: usize) -> usize {
+        self.emit(InterCode::CLOSE(ra as u8))
+    }
+
+    pub(super) fn emit_forprep(&mut self, ra: usize) -> usize {
+        self.emit(InterCode::FORPREP(ra as u8, 0))
+    }
+
+    pub(super) fn emit_tforprep(&mut self, ra: usize) -> usize {
+        self.emit(InterCode::TFORPREP(ra as u8, 0))
+    }
+
+    pub(super) fn emit_tforcall(&mut self, ra: usize, rc: usize) -> usize {
+        self.emit(InterCode::TFORCALL(ra as u8, rc as u8))
+    }
+
+    pub(super) fn emit_forloop(&mut self, ra: usize) -> usize {
+        self.emit(InterCode::FORLOOP(ra as u8, 0))
+    }
+
+    pub(super) fn emit_tforloop(&mut self, ra: usize) -> usize {
+        self.emit(InterCode::TFORLOOP(ra as u8, 0))
+    }
+
     pub(super) fn set_ra(&mut self, pc: usize, ra: usize) {
         let ra = ra as u8;
 
@@ -306,6 +330,18 @@ impl<'s> Emiter<'s> {
         })
     }
 
+    pub(super) fn set_bx(&mut self, pc: usize, bx: i32) {
+        self.modify_code(pc, |c| {
+            *c = match *c {
+                InterCode::FORPREP(ra, _) => InterCode::FORPREP(ra, bx),
+                InterCode::TFORPREP(ra, _) => InterCode::TFORPREP(ra, bx),
+                InterCode::FORLOOP(ra, _) => InterCode::FORLOOP(ra, bx),
+                InterCode::TFORLOOP(ra, _) => InterCode::TFORLOOP(ra, bx),
+                _ => *c,
+            }
+        })
+    }
+
     pub(super) fn set_rc(&mut self, pc: usize, rc: u8) {
         self.modify_code(pc, |c| {
             *c = match *c {
@@ -318,10 +354,10 @@ impl<'s> Emiter<'s> {
         })
     }
 
-    pub(super) fn set_sj(&mut self, pc: usize, sj: usize) {
+    pub(super) fn set_sj(&mut self, pc: usize, sj: i64) {
         self.modify_code(pc, |c| {
             *c = match *c {
-                InterCode::JMP(_) => InterCode::JMP(Some(sj as u32)),
+                InterCode::JMP(_) => InterCode::JMP(Some(sj as i32)),
                 _ => *c,
             };
 

@@ -18,6 +18,8 @@ impl<'s> ParseVar<'s> {
 
         let nactvar = self.p.fs.prop().nactvar;
 
+        log::debug!("nactvar = {}", nactvar);
+
         for idx in (0..nactvar).rev() {
             match self.p.pfscope().getloc(idx) {
                 Some(v) if v.name.eq(name) => {
@@ -29,6 +31,7 @@ impl<'s> ParseVar<'s> {
                         _ => Expr::local(idx, v.r_idx),
                     })
                 }
+                Some(v) => log::debug!("searched varname: {}", v.name),
                 _ => {}
             }
         }
@@ -106,5 +109,22 @@ impl<'s> ParseVar<'s> {
             _ => Ok(exp),
         }
         .and_then(|exp| Ok(exp.tj(tj).fj(fj)))
+    }
+
+    pub(super) fn removevars(&mut self, tolevel: usize) {
+        let pc = self.p.emiter().pc();
+
+        while self.p.fs.prop().nactvar > tolevel {
+            self.p.fs.prop_mut().nactvar -= 1;
+
+            let pidx = match self.p.actvar.pop() {
+                Some(v) if !matches!(v.kind, VarKind::CTC) => v.p_idx,
+                _ => continue,
+            };
+
+            if let Some(var) = self.p.fs.prop_mut().proto.prop_mut().locvars.get_mut(pidx) {
+                var.end_pc = pc;
+            }
+        }
     }
 }

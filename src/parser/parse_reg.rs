@@ -95,7 +95,7 @@ impl<'s> ParseReg<'s> {
     }
 
     pub(super) fn infix(&mut self, op: BinOpr, exp: Expr) -> Result<Expr, ParseErr> {
-        log::debug!("parse infix, op: {}", op);
+        log::debug!("parse infix, op: {}, exp: {}", op, exp.value);
 
         let exp = self.p.pvar().discharge_tovar(exp)?;
 

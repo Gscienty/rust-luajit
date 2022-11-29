@@ -3,9 +3,9 @@ use std::{
     rc::Rc,
 };
 
-use crate::object::{Expr, ExprValue, Prototype};
+use crate::object::Prototype;
 
-use super::{Block, ParseErr};
+use super::Block;
 
 pub(super) struct FuncStateContent {
     pub(super) prev: Option<FuncState>,

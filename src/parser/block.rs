@@ -12,6 +12,7 @@ pub(super) struct BlockContent {
     pub(super) firstgoto: usize,
     pub(super) is_loop: bool,
     pub(super) inside_tobeclosed: bool,
+    pub(super) needclose: bool,
 }
 
 #[derive(Clone)]
@@ -28,6 +29,7 @@ impl Block {
             firstgoto: 0,
             is_loop: false,
             inside_tobeclosed: false,
+            needclose: false,
         })))
     }
 
