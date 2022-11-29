@@ -253,19 +253,40 @@ impl<'s> ParseStmt<'s> {
     }
 
     // forlist_stmt ::= name { `,` name } `in` explist_exp forbody_stmt
-    pub(super) fn forlist_stmt(&mut self, _indexname: &str) -> Result<(), ParseErr> {
+    pub(super) fn forlist_stmt(&mut self, name: &str) -> Result<(), ParseErr> {
         log::debug!("parse forlist_stmt");
+
+        let base = self.p.fs.prop().freereg;
+
+        self.p.pfscope().pushloc(Var::new("(for state)"));
+        self.p.pfscope().pushloc(Var::new("(for state)"));
+        self.p.pfscope().pushloc(Var::new("(for state)"));
+        self.p.pfscope().pushloc(Var::new("(for state)"));
+
+        self.p.pfscope().pushloc(Var::new(name));
+
+        let mut nvars = 5;
 
         // parse { `,` name }
         while match_token!(test_consume: self.p, Token::Operator(',')) {
-            let _name = self.p.plex().name()?;
+            let name = self.p.plex().name()?;
+            self.p.pfscope().pushloc(Var::new(&name));
+            nvars += 1;
         }
         // parse `in`
         match_token!(consume: self.p, Token::In)?;
         // parse explist_exp
-        let _ne = self.p.pexp().exprlist_exp()?;
+        let (nexps, exp) = self.p.pexp().exprlist_exp()?;
+
+        self.adjust_assign(4, nexps, exp)?;
+        self.p.pfscope().adjust_localvars(4);
+
+        self.p.fs.prop().block.prop_mut().upval = true;
+        self.p.fs.prop().block.prop_mut().inside_tobeclosed = true;
+        self.p.fs.prop().block.prop_mut().needclose = true;
+
         // parse forbody_stmt
-        self.forbody_stmt(0, 0, true)?;
+        self.forbody_stmt(base, nvars - 4, true)?;
 
         Ok(())
     }

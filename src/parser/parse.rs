@@ -159,6 +159,10 @@ mod tests {
                     local t = 1;
                 end
 
+                for a, b in 5, 6 do
+                    local f = 2;
+                end
+
                 local i = 5;
 
                 if 3 + 2 > i then
