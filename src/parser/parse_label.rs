@@ -68,7 +68,7 @@ impl<'s> ParseLabel<'s> {
 
         let label = LabelDesc::new(name, labelpc, nactvar);
         let result = if self.slovegotos(&label)? {
-            let nactvar = self.p.pfscope().nvars_stack();
+            let nactvar = self.p.pvar().nvars_stack();
             self.p.emiter().emit_close(nactvar);
 
             true
@@ -90,7 +90,7 @@ impl<'s> ParseLabel<'s> {
     }
 
     pub(super) fn movegotosout(&mut self, block: &Block) -> Result<(), ParseErr> {
-        let block_level = self.p.pfscope().reglevel(block.prop().nactvar);
+        let block_level = self.p.pvar().reglevel(block.prop().nactvar);
 
         for i in block.prop().firstgoto..self.p.goto.len() {
             let goto = if let Some(goto) = self.p.goto.get(i) {
@@ -98,7 +98,7 @@ impl<'s> ParseLabel<'s> {
             } else {
                 continue;
             };
-            let goto_level = self.p.pfscope().reglevel(goto.nactvar);
+            let goto_level = self.p.pvar().reglevel(goto.nactvar);
 
             if let Some(goto) = self.p.goto.get_mut(i) {
                 if goto_level > block_level {

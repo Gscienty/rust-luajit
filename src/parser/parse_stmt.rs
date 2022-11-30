@@ -35,7 +35,7 @@ impl<'s> ParseStmt<'s> {
         }
 
         if needed > 0 {
-            self.p.pfscope().reserver_regs(needed as usize);
+            self.p.preg().reserver_regs(needed as usize);
         } else {
             self.p.fs.prop_mut().freereg -= needed.abs() as usize;
         }
@@ -191,8 +191,8 @@ impl<'s> ParseStmt<'s> {
         };
 
         self.p.pfscope().enterblock(false);
-        self.p.pfscope().adjust_localvars(nvars);
-        self.p.pfscope().reserver_regs(nvars);
+        self.p.pvar().adjust_localvars(nvars);
+        self.p.preg().reserver_regs(nvars);
 
         // parse block_stmt
         self.block_stmt()?;
@@ -220,10 +220,10 @@ impl<'s> ParseStmt<'s> {
 
         let base = self.p.fs.prop().freereg;
 
-        self.p.pfscope().pushloc(Var::new("(for state)"));
-        self.p.pfscope().pushloc(Var::new("(for state)"));
-        self.p.pfscope().pushloc(Var::new("(for state)"));
-        self.p.pfscope().pushloc(Var::new(name));
+        self.p.pvar().pushloc(Var::new("(for state)"));
+        self.p.pvar().pushloc(Var::new("(for state)"));
+        self.p.pvar().pushloc(Var::new("(for state)"));
+        self.p.pvar().pushloc(Var::new(name));
 
         // parse `=`
         match_token!(consume: self.p, Token::Operator('='))?;
@@ -242,10 +242,10 @@ impl<'s> ParseStmt<'s> {
 
             // default step 1
             self.p.emiter().emit_loadint(freereg, 1);
-            self.p.pfscope().reserver_regs(1);
+            self.p.preg().reserver_regs(1);
         }
 
-        self.p.pfscope().adjust_localvars(3);
+        self.p.pvar().adjust_localvars(3);
         // parse forbody_stmt
         self.forbody_stmt(base, 1, false)?;
 
@@ -258,19 +258,19 @@ impl<'s> ParseStmt<'s> {
 
         let base = self.p.fs.prop().freereg;
 
-        self.p.pfscope().pushloc(Var::new("(for state)"));
-        self.p.pfscope().pushloc(Var::new("(for state)"));
-        self.p.pfscope().pushloc(Var::new("(for state)"));
-        self.p.pfscope().pushloc(Var::new("(for state)"));
+        self.p.pvar().pushloc(Var::new("(for state)"));
+        self.p.pvar().pushloc(Var::new("(for state)"));
+        self.p.pvar().pushloc(Var::new("(for state)"));
+        self.p.pvar().pushloc(Var::new("(for state)"));
 
-        self.p.pfscope().pushloc(Var::new(name));
+        self.p.pvar().pushloc(Var::new(name));
 
         let mut nvars = 5;
 
         // parse { `,` name }
         while match_token!(test_consume: self.p, Token::Operator(',')) {
             let name = self.p.plex().name()?;
-            self.p.pfscope().pushloc(Var::new(&name));
+            self.p.pvar().pushloc(Var::new(&name));
             nvars += 1;
         }
         // parse `in`
@@ -279,7 +279,7 @@ impl<'s> ParseStmt<'s> {
         let (nexps, exp) = self.p.pexp().exprlist_exp()?;
 
         self.adjust_assign(4, nexps, exp)?;
-        self.p.pfscope().adjust_localvars(4);
+        self.p.pvar().adjust_localvars(4);
 
         self.p.fs.prop().block.prop_mut().upval = true;
         self.p.fs.prop().block.prop_mut().inside_tobeclosed = true;
@@ -377,7 +377,7 @@ impl<'s> ParseStmt<'s> {
                 match self.p.lex(|x| x.token.clone()) {
                     // parse name
                     Token::Name(name) => {
-                        self.p.pfscope().pushloc(Var::new(name.as_str()));
+                        self.p.pvar().pushloc(Var::new(name.as_str()));
                         self.p.plex().skip()?;
                         _nparams += 1;
                     }
@@ -400,35 +400,53 @@ impl<'s> ParseStmt<'s> {
     }
 
     // body_stmt ::= `(` parlist `)` block_stmt `end`
-    pub(super) fn body_stmt(&mut self, ismethod: bool) -> Result<(), ParseErr> {
+    pub(super) fn body_stmt(&mut self, ismethod: bool) -> Result<Expr, ParseErr> {
         log::debug!("parse body_stmt");
+
+        self.p.pfscope().enterfunc();
 
         // parse `(`
         match_token!(consume: self.p, Token::Operator('('))?;
         if ismethod {
-            self.p.pfscope().pushloc(Var::new("self"));
+            self.p.pvar().pushloc(Var::new("self"));
+            self.p.pvar().adjust_localvars(1);
         }
         // parse parlist_stmt
         self.parlist_stmt()?;
         // parse `)`
         match_token!(consume: self.p, Token::Operator(')'))?;
         // parse block_stmt
-        self.block_stmt()?;
+        self.stmtlist()?;
         // parse `end`
         match_token!(consume: self.p, Token::End)?;
-        Ok(())
+
+        let pfscope = self.p.fs.prop().prev.clone();
+        let exp = if let Some(pfscope) = pfscope {
+            let closureid = pfscope.prop().p.len() - 1;
+            let pc = self.p.emiter().emit_closure(closureid);
+
+            Expr::reloc(pc)
+        } else {
+            return Err(ParseErr::BadUsage);
+        };
+
+        self.p.pfscope().leavefunc()?;
+
+        self.p.preg().exp_tonextreg(exp)
     }
 
     // fieldsel_stmt -> [`.` | `:`] name
-    pub(super) fn fieldsel_stmt(&mut self) -> Result<Expr, ParseErr> {
+    pub(super) fn fieldsel_stmt(&mut self, exp: Expr) -> Result<Expr, ParseErr> {
         log::debug!("parse fieldsel_stmt");
+
+        let exp = self.p.preg().exp_toanyregup(exp)?;
 
         // parse [`.` | `:`]
         self.p.plex().skip()?;
         // parse name
-        let _name = self.p.plex().name()?;
+        let name = self.p.plex().name()?;
 
-        Ok(Expr::todo())
+        self.p.ptab().indexed(exp, Expr::from(name.as_str()))
     }
 
     // funcname_stmt -> name { fieldsel_stmt } [ `:` name ]
@@ -436,19 +454,24 @@ impl<'s> ParseStmt<'s> {
         log::debug!("parse funcname_stmt");
 
         // parse name
-        let _name = self.p.plex().name()?;
+        let name = self.p.plex().name()?;
+
+        let mut exp = self.p.pvar().single_var(&name)?;
+
+        log::debug!("funcname exp: {}", exp.value);
+
         // parse { fieldsel_stmt }
         while match_token!(test: self.p, Token::Operator('.')) {
-            self.fieldsel_stmt()?;
+            exp = self.fieldsel_stmt(exp)?;
         }
         let mut ismethod = false;
         // parse [ `:` name ]
         if match_token!(test: self.p, Token::Operator(':')) {
-            self.fieldsel_stmt()?;
+            exp = self.fieldsel_stmt(exp)?;
             ismethod = true;
         }
 
-        Ok((ismethod, Expr::todo()))
+        Ok((ismethod, exp))
     }
 
     // func_stmt := `function` funcname_stmt body_stmt
@@ -458,9 +481,12 @@ impl<'s> ParseStmt<'s> {
         // parse `function`
         self.p.plex().skip()?;
         // parse funcname_stmt
-        let (ismethod, _) = self.funcname_stmt()?;
+        let (ismethod, name_exp) = self.funcname_stmt()?;
         // parse body_stmt
-        self.body_stmt(ismethod)?;
+        let body_exp = self.body_stmt(ismethod)?;
+
+        // store var
+        self.p.pvar().store_var(name_exp, body_exp)?;
 
         Ok(())
     }
@@ -521,7 +547,7 @@ impl<'s> ParseStmt<'s> {
                 }
             }
 
-            let vidx = self.p.pfscope().pushloc(var);
+            let vidx = self.p.pvar().pushloc(var);
             nvars += 1;
 
             // parse `,`
@@ -538,7 +564,7 @@ impl<'s> ParseStmt<'s> {
             (0, Expr::void())
         };
 
-        let var = self.p.pfscope().getloc(vlatestidx);
+        let var = self.p.pvar().getloc(vlatestidx);
         let latestvalue =
             if nvars == nexps && matches!(var.and_then(|v| Some(v.kind)), Some(VarKind::CONST)) {
                 self.p.preg().exp_torefvalue(&exp)
@@ -547,7 +573,7 @@ impl<'s> ParseStmt<'s> {
             };
 
         if let Ok(val) = latestvalue {
-            match self.p.pfscope().getloc_mut(vlatestidx) {
+            match self.p.pvar().getloc_mut(vlatestidx) {
                 Some(v) => {
                     v.kind = VarKind::CTC;
                     v.val = val;
@@ -555,11 +581,11 @@ impl<'s> ParseStmt<'s> {
                 _ => return Err(ParseErr::BadUsage),
             }
 
-            self.p.pfscope().adjust_localvars(nvars - 1);
+            self.p.pvar().adjust_localvars(nvars - 1);
             self.p.fs.prop_mut().nactvar += 1;
         } else {
             self.adjust_assign(nvars, nexps, exp)?;
-            self.p.pfscope().adjust_localvars(nvars);
+            self.p.pvar().adjust_localvars(nvars);
         }
 
         if let Some(level) = toclose {
@@ -567,7 +593,7 @@ impl<'s> ParseStmt<'s> {
             self.p.fs.prop().block.prop_mut().inside_tobeclosed = true;
             self.p.fs.prop().block.prop_mut().needclose = true;
 
-            let vidx = self.p.pfscope().reglevel(level);
+            let vidx = self.p.pvar().reglevel(level);
             self.p.emiter().emit_tbc(vidx);
         }
 
@@ -656,9 +682,9 @@ impl<'s> ParseStmt<'s> {
 
         if let Some(label) = self.p.plabel().findlabel(&name) {
             let blnactvar = self.p.fs.prop().block.prop().nactvar;
-            let bllevel = self.p.pfscope().reglevel(blnactvar);
+            let bllevel = self.p.pvar().reglevel(blnactvar);
 
-            if self.p.pfscope().nvars_stack() > bllevel {
+            if self.p.pvar().nvars_stack() > bllevel {
                 self.p.emiter().emit_close(bllevel);
             }
 
@@ -720,8 +746,8 @@ impl<'s> ParseStmt<'s> {
             Token::Repeat => self.repeat_stmt(),
             Token::For => self.for_stmt(),
             Token::If => self.if_stmt(),
-
             Token::Function => self.func_stmt(),
+
             Token::Return => self.return_stmt(),
             _ => self.expr_stmt(),
         }

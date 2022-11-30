@@ -19,13 +19,12 @@ pub(crate) enum ExprValue {
     Jump(usize),   // PC, expression is a test / comparsion
     Reloc(usize),  // PC, put result in any register
 
-    Local(usize, usize), // idx, rR
+    Local(usize, usize), // pidx, ridx
 
-    Upval(usize), // R
+    Upval(usize), // vidx
 
-    Index(usize, usize),    // tR, rR
     IndexUp(usize, usize),  // tR, rR
-    IndexI(usize, usize),   // tR, rR
+    IndexI(usize, i64),     // tR, rR
     IndexStr(usize, usize), // tR, rR
     Indexed(usize, usize),  // tR, rR
 
@@ -165,6 +164,46 @@ impl Expr {
         }
     }
 
+    pub(crate) fn indexup(treg: usize, kreg: usize) -> Self {
+        Expr {
+            value: ExprValue::IndexUp(treg, kreg),
+            true_jumpto: None,
+            false_jumpto: None,
+        }
+    }
+
+    pub(crate) fn indexed(treg: usize, kreg: usize) -> Self {
+        Expr {
+            value: ExprValue::Indexed(treg, kreg),
+            true_jumpto: None,
+            false_jumpto: None,
+        }
+    }
+
+    pub(crate) fn indexi(treg: usize, kval: i64) -> Self {
+        Expr {
+            value: ExprValue::IndexI(treg, kval),
+            true_jumpto: None,
+            false_jumpto: None,
+        }
+    }
+
+    pub(crate) fn indexstr(treg: usize, kreg: usize) -> Self {
+        Expr {
+            value: ExprValue::IndexStr(treg, kreg),
+            true_jumpto: None,
+            false_jumpto: None,
+        }
+    }
+
+    pub(crate) fn upval(idx: usize) -> Self {
+        Expr {
+            value: ExprValue::Upval(idx),
+            true_jumpto: None,
+            false_jumpto: None,
+        }
+    }
+
     pub(crate) fn numeric(&self) -> bool {
         match self.value {
             ExprValue::Float(_) | ExprValue::Integer(_) => true,
@@ -215,7 +254,6 @@ impl Display for ExprValue {
             ExprValue::Reloc(v) => write!(f, "Reloc({})", *v),
             ExprValue::Upval(v) => write!(f, "Upval({})", *v),
             ExprValue::Local(v1, v2) => write!(f, "Local({}, {})", *v1, *v2),
-            ExprValue::Index(v1, v2) => write!(f, "Index({}, {})", *v1, *v2),
             ExprValue::IndexUp(v1, v2) => write!(f, "IndexUp({}, {})", *v1, *v2),
             ExprValue::IndexI(v1, v2) => write!(f, "IndexI({}, {})", *v1, *v2),
             ExprValue::IndexStr(v1, v2) => write!(f, "IndexStr({}, {})", *v1, *v2),

@@ -8,6 +8,7 @@ mod parse_label;
 mod parse_lex;
 mod parse_reg;
 mod parse_stmt;
+mod parse_tab;
 mod parse_var;
 mod unopr;
 
@@ -20,6 +21,7 @@ pub(super) use parse_label::*;
 pub(super) use parse_lex::*;
 pub(super) use parse_reg::*;
 pub(super) use parse_stmt::*;
+pub(super) use parse_tab::*;
 pub(super) use parse_var::*;
 pub(super) use unopr::*;
 

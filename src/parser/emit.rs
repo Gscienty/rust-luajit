@@ -14,12 +14,12 @@ impl<'s> Emiter<'s> {
     fn emit(&mut self, code: InterCode) -> usize {
         log::debug!("emit code: {}", code);
 
-        self.p.codes.push(code);
-        self.p.codes.len() - 1
+        self.p.fs.prop_mut().proto.prop_mut().codes.push(code);
+        self.p.fs.prop().proto.prop().codes.len() - 1
     }
 
     pub(super) fn pop(&mut self) {
-        self.p.codes.pop();
+        self.p.fs.prop_mut().proto.prop_mut().codes.pop();
     }
 
     pub(super) fn emit_vararg(&mut self) -> usize {
@@ -230,7 +230,7 @@ impl<'s> Emiter<'s> {
         self.emit(InterCode::GETTABUP(255, rb as u8, rc as u8))
     }
 
-    pub(super) fn emit_geti(&mut self, rb: usize, rc: usize) -> usize {
+    pub(super) fn emit_geti(&mut self, rb: usize, rc: i64) -> usize {
         self.emit(InterCode::GETI(255, rb as u8, rc as u8))
     }
 
@@ -268,6 +268,42 @@ impl<'s> Emiter<'s> {
 
     pub(super) fn emit_tforloop(&mut self, ra: usize) -> usize {
         self.emit(InterCode::TFORLOOP(ra as u8, 0))
+    }
+
+    pub(super) fn emit_setupval(&mut self, ra: usize, rb: usize) -> usize {
+        self.emit(InterCode::SETUPVAL(ra as u8, rb as u8))
+    }
+
+    pub(super) fn emit_settabup(&mut self, ra: usize, rb: usize, rc: usize, k: bool) -> usize {
+        self.emit(InterCode::SETTABUP(ra as u8, rb as u8, rc as u8, k))
+    }
+
+    pub(super) fn emit_settable(&mut self, ra: usize, rb: usize, rc: usize, k: bool) -> usize {
+        self.emit(InterCode::SETTABLE(ra as u8, rb as u8, rc as u8, k))
+    }
+
+    pub(super) fn emit_seti(&mut self, ra: usize, rb: i64, rc: usize, k: bool) -> usize {
+        self.emit(InterCode::SETI(ra as u8, rb as u8, rc as u8, k))
+    }
+
+    pub(super) fn emit_setfield(&mut self, ra: usize, rb: usize, rc: usize, k: bool) -> usize {
+        self.emit(InterCode::SETFIELD(ra as u8, rb as u8, rc as u8, k))
+    }
+
+    pub(super) fn emit_return(&mut self, ra: usize, rb: usize) -> usize {
+        self.emit(InterCode::RETURN(ra as u8, rb as u8))
+    }
+
+    pub(super) fn emit_return1(&mut self, ra: usize) -> usize {
+        self.emit(InterCode::RETURN1(ra as u8))
+    }
+
+    pub(super) fn emit_return0(&mut self) -> usize {
+        self.emit(InterCode::RETURN0)
+    }
+
+    pub(super) fn emit_closure(&mut self, rb: usize) -> usize {
+        self.emit(InterCode::CLOSURE(255, rb as u32))
     }
 
     pub(super) fn set_ra(&mut self, pc: usize, ra: usize) {
@@ -312,6 +348,7 @@ impl<'s> Emiter<'s> {
                 InterCode::GETFIELD(_, rb, rc) => InterCode::GETFIELD(ra, rb, rc),
                 InterCode::GETTABLE(_, rb, rc) => InterCode::GETTABLE(ra, rb, rc),
                 InterCode::VARARG(_, rb) => InterCode::VARARG(ra, rb),
+                InterCode::CLOSURE(_, rb) => InterCode::CLOSURE(ra, rb),
                 _ => *c,
             };
 
@@ -389,13 +426,13 @@ impl<'s> Emiter<'s> {
     where
         F: FnOnce(&mut InterCode),
     {
-        if let Some(code) = self.p.codes.get_mut(pc) {
+        if let Some(code) = self.p.fs.prop_mut().proto.prop_mut().codes.get_mut(pc) {
             f(code)
         }
     }
 
     pub(super) fn pc(&self) -> usize {
-        self.p.codes.len()
+        self.p.fs.prop().proto.prop().codes.len()
     }
 
     pub(super) fn mark_pc(&mut self) -> usize {
@@ -406,7 +443,14 @@ impl<'s> Emiter<'s> {
     }
 
     pub(super) fn get_code(&self, pc: usize) -> Option<InterCode> {
-        self.p.codes.get(pc).and_then(|c| Some(*c))
+        self.p
+            .fs
+            .prop()
+            .proto
+            .prop()
+            .codes
+            .get(pc)
+            .and_then(|c| Some(*c))
     }
 
     pub(super) fn get_jump(&self, pc: usize) -> Option<usize> {

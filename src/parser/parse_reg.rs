@@ -191,7 +191,7 @@ impl<'s> ParseReg<'s> {
         match exp.value {
             ExprValue::Nonreloc(_) => Ok(exp),
             _ => {
-                self.p.pfscope().reserver_regs(1);
+                self.reserver_regs(1);
 
                 let reg = self.p.fs.prop().freereg - 1;
                 self.discharge_toreg(exp, reg)
@@ -212,7 +212,16 @@ impl<'s> ParseReg<'s> {
         false
     }
 
+    pub(super) fn exp_toanyregup(&mut self, exp: Expr) -> Result<Expr, ParseErr> {
+        if !matches!(exp.value, ExprValue::Upval(..)) || exp.hasjump() {
+            self.exp_toanyreg(exp)
+        } else {
+            Ok(exp)
+        }
+    }
+
     pub(super) fn exp_toreg(&mut self, exp: Expr, reg: usize) -> Result<Expr, ParseErr> {
+        log::debug!("exp toreg: exp {}, reg: {}", exp.value, reg);
         let mut exp = self.discharge_toreg(exp, reg)?;
 
         if let ExprValue::Jump(pc) = exp.value {
@@ -250,10 +259,12 @@ impl<'s> ParseReg<'s> {
     }
 
     pub(super) fn exp_tonextreg(&mut self, exp: Expr) -> Result<Expr, ParseErr> {
+        log::debug!("exp tonextreg exp: {}", exp.value);
+
         let exp = self.p.pvar().discharge_tovar(exp)?;
 
-        self.p.pfscope().exp_free(&exp)?;
-        self.p.pfscope().reserver_regs(1);
+        self.exp_free(&exp)?;
+        self.reserver_regs(1);
 
         let reg = self.p.fs.prop().freereg - 1;
         self.exp_toreg(exp, reg)
@@ -274,5 +285,54 @@ impl<'s> ParseReg<'s> {
             ExprValue::Nonreloc(reg) => Ok(reg),
             _ => Err(ParseErr::BadUsage),
         }
+    }
+
+    pub(super) fn reserver_regs(&mut self, n: usize) {
+        self.p.fs.prop_mut().freereg += n;
+    }
+
+    pub(super) fn free_reg(&mut self, reg: usize) -> Result<(), ParseErr> {
+        if reg < self.p.pvar().nvars_stack() {
+            return Ok(());
+        }
+
+        self.p.fs.prop_mut().freereg -= 1;
+        if self.p.fs.prop().freereg == reg {
+            Ok(())
+        } else {
+            Err(ParseErr::BadUsage)
+        }
+    }
+
+    pub(super) fn exp_free(&mut self, exp: &Expr) -> Result<(), ParseErr> {
+        match exp.value {
+            ExprValue::Nonreloc(reg) => self.free_reg(reg),
+            _ => Ok(()),
+        }
+    }
+
+    pub(super) fn exps_free(&mut self, e1: &Expr, e2: &Expr) -> Result<(), ParseErr> {
+        log::debug!("exps free, e1: {}; e2: {}", e1.value, e2.value);
+
+        match e1.value {
+            ExprValue::Nonreloc(r1) => match e2.value {
+                ExprValue::Nonreloc(r2) => {
+                    if r1 < r2 {
+                        self.free_reg(r2)?;
+                        self.free_reg(r1)?;
+                    } else {
+                        self.free_reg(r1)?;
+                        self.free_reg(r2)?;
+                    }
+                }
+                _ => self.free_reg(r1)?,
+            },
+            _ => match e2.value {
+                ExprValue::Nonreloc(r2) => self.free_reg(r2)?,
+                _ => {}
+            },
+        };
+
+        Ok(())
     }
 }

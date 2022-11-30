@@ -122,7 +122,7 @@ impl<'s> ParseCode<'s> {
                 let reg = self.p.preg().locreg(&e1)?;
                 let pc = self.arith_imm(op, reg, value as u8)?;
 
-                self.p.pfscope().exp_free(&e1)?;
+                self.p.preg().exp_free(&e1)?;
 
                 Ok(Expr::reloc(pc))
             }
@@ -135,7 +135,7 @@ impl<'s> ParseCode<'s> {
                 let reg = self.p.preg().locreg(&e1)?;
                 let pc = self.arith_k(op, reg, k)?;
 
-                self.p.pfscope().exp_free(&e1)?;
+                self.p.preg().exp_free(&e1)?;
 
                 Ok(Expr::reloc(pc))
             }
@@ -212,7 +212,7 @@ impl<'s> ParseCode<'s> {
 
             let pc = self.arith_allreg(op, r1, r2)?;
 
-            self.p.pfscope().exps_free(&e1, &e2)?;
+            self.p.preg().exps_free(&e1, &e2)?;
 
             Ok(Expr::reloc(pc))
         }
@@ -254,7 +254,7 @@ impl<'s> ParseCode<'s> {
                             self.p.emiter().set_ra(pc, reg);
                             self.p.emiter().set_rb(pc, prb + 1);
 
-                            self.p.pfscope().exp_free(&e2)?;
+                            self.p.preg().exp_free(&e2)?;
 
                             Ok(e1)
                         }
@@ -264,7 +264,7 @@ impl<'s> ParseCode<'s> {
                         ExprValue::Nonreloc(reg) => {
                             self.p.emiter().emit_concat(reg);
 
-                            self.p.pfscope().exp_free(&e2)?;
+                            self.p.preg().exp_free(&e2)?;
 
                             Ok(e1)
                         }
@@ -292,7 +292,7 @@ impl<'s> ParseCode<'s> {
     fn unarith(&mut self, op: UnOpr, exp: Expr) -> Result<Expr, ParseErr> {
         let exp = self.p.preg().exp_toanyreg(exp)?;
         let r = self.p.preg().locreg(&exp)?;
-        self.p.pfscope().exp_free(&exp)?;
+        self.p.preg().exp_free(&exp)?;
 
         match op {
             UnOpr::MINUS => Ok(Expr::reloc(self.p.emiter().emit_unm(r))),
@@ -349,7 +349,7 @@ impl<'s> ParseCode<'s> {
                     ExprValue::Reloc(_) | ExprValue::Nonreloc(_) => {
                         let exp = self.p.preg().discharge_toanyreg(exp)?;
                         let r = self.p.preg().locreg(&exp)?;
-                        self.p.pfscope().exp_free(&exp)?;
+                        self.p.preg().exp_free(&exp)?;
 
                         Ok(Expr::reloc(self.p.emiter().emit_not(r)))
                     }
@@ -483,7 +483,7 @@ impl<'s> ParseCode<'s> {
         };
 
         let exp = self.p.preg().discharge_toanyreg(exp)?;
-        self.p.pfscope().exp_free(&exp)?;
+        self.p.preg().exp_free(&exp)?;
         let reg = self.p.preg().locreg(&exp)?;
 
         self.p.emiter().emit_testset(reg, cond);
@@ -553,7 +553,7 @@ impl<'s> ParseCode<'s> {
             ExprValue::Integer(value) if 0 <= value && value as u32 <= codelimit::MAX_SBX => {
                 self.p.emiter().emit_eqi(ra, value as u32, k);
 
-                self.p.pfscope().exp_free(&e1)?;
+                self.p.preg().exp_free(&e1)?;
             }
             _ => {
                 let e2 = self.p.preg().exp_tokreg(e2)?;
@@ -561,12 +561,12 @@ impl<'s> ParseCode<'s> {
                     ExprValue::Nonreloc(rb) => {
                         self.p.emiter().emit_eq(ra, rb, k);
 
-                        self.p.pfscope().exps_free(&e1, &e2)?;
+                        self.p.preg().exps_free(&e1, &e2)?;
                     }
                     ExprValue::K(rb) => {
                         self.p.emiter().emit_eqk(ra, rb, k);
 
-                        self.p.pfscope().exp_free(&e1)?;
+                        self.p.preg().exp_free(&e1)?;
                     }
                     _ => return Err(ParseErr::BadUsage),
                 }
@@ -597,7 +597,7 @@ impl<'s> ParseCode<'s> {
                 BinOpr::LE => self.p.emiter().emit_lei(r1, imm as u32, true),
                 _ => unreachable!(),
             };
-            self.p.pfscope().exp_free(&e1)?;
+            self.p.preg().exp_free(&e1)?;
         } else if matches!(e1.value, ExprValue::Integer(v) if 0 <= v && v as u32 <= codelimit::MAX_SBX)
         {
             let e2 = self.p.preg().exp_toanyreg(e2)?;
@@ -613,7 +613,7 @@ impl<'s> ParseCode<'s> {
                 BinOpr::LE => self.p.emiter().emit_gei(r2, imm as u32, true),
                 _ => unreachable!(),
             };
-            self.p.pfscope().exp_free(&e2)?;
+            self.p.preg().exp_free(&e2)?;
         } else {
             let e1 = self.p.preg().exp_toanyreg(e1)?;
             let e2 = self.p.preg().exp_toanyreg(e2)?;
@@ -626,7 +626,7 @@ impl<'s> ParseCode<'s> {
                 _ => unreachable!(),
             };
 
-            self.p.pfscope().exps_free(&e1, &e2)?;
+            self.p.preg().exps_free(&e1, &e2)?;
         }
 
         Ok(Expr::jmp(self.p.emiter().emit_jmp()))
@@ -645,11 +645,19 @@ impl<'s> ParseCode<'s> {
                 self.p.emiter().set_rc(pc, nresults as u8 + 1);
                 self.p.emiter().set_ra(pc, freereg);
 
-                self.p.pfscope().reserver_regs(1);
+                self.p.preg().reserver_regs(1);
 
                 Ok(())
             }
             _ => Err(ParseErr::BadUsage),
         }
+    }
+
+    pub(super) fn ret(&mut self, first: usize, nret: usize) {
+        match nret {
+            0 => self.p.emiter().emit_return0(),
+            1 => self.p.emiter().emit_return1(first),
+            _ => self.p.emiter().emit_return(first, nret + 1),
+        };
     }
 }

@@ -1,14 +1,13 @@
 use std::{cell::RefCell, rc::Rc};
 
 use crate::{
-    code::InterCode,
     lexer::Lexer,
-    object::{ConstantPool, LabelDesc, RefValue, Table, Var},
+    object::{ConstantPool, LabelDesc, RefValue, Table, Upval, Var, VarKind},
 };
 
 use super::{
     Emiter, FuncState, ParseCode, ParseErr, ParseExpr, ParseFunc, ParseGTab, ParseLabel, ParseLex,
-    ParseReg, ParseStmt, ParseVar,
+    ParseReg, ParseStmt, ParseTab, ParseVar,
 };
 
 pub(crate) struct Parser {
@@ -21,13 +20,10 @@ pub(crate) struct Parser {
 
     lexer: Lexer,
 
-    envn: String,
-
     pub(super) actvar: Vec<Var>,
     pub(super) goto: Vec<LabelDesc>,
     pub(super) label: Vec<LabelDesc>,
 
-    pub(crate) codes: Vec<InterCode>,
     pub(super) last_target: usize,
 
     pub(crate) constant_pool: Rc<RefCell<ConstantPool>>,
@@ -46,13 +42,10 @@ impl Parser {
             fs: gfs.clone(),
             lexer: Lexer::new(source),
 
-            envn: String::from("ENV"),
-
             actvar: Vec::new(),
             goto: Vec::new(),
             label: Vec::new(),
 
-            codes: Vec::new(),
             last_target: 0,
 
             constant_pool: Rc::new(RefCell::new(ConstantPool::new())),
@@ -93,9 +86,7 @@ impl Parser {
         }
     }
 
-    pub(super) fn env_name(&self) -> &str {
-        &self.envn
-    }
+    pub(super) const ENV: &str = "nenv";
 
     pub(super) fn emiter(&mut self) -> Emiter {
         Emiter::new(self)
@@ -129,6 +120,10 @@ impl Parser {
         ParseFunc::new(self)
     }
 
+    pub(super) fn ptab<'s>(&'s mut self) -> ParseTab {
+        ParseTab::new(self)
+    }
+
     pub(super) fn pgtab<'s>(&'s mut self) -> ParseGTab {
         ParseGTab::new(self)
     }
@@ -138,6 +133,11 @@ impl Parser {
     }
 
     pub(crate) fn parse(&mut self) -> Result<(), ParseErr> {
+        let mut envupv = Upval::new(Parser::ENV);
+        envupv.instack = true;
+        envupv.kind = VarKind::REG;
+        self.pvar().pushupval(envupv);
+
         self.lexer.token_next()?; // read first token
 
         self.pstmt().stmtlist()
@@ -155,6 +155,7 @@ mod tests {
 
         let mut p = Parser::new(
             "
+            function test()
                 for i = 1, 5, 2 do
                     local t = 1;
                 end
@@ -186,13 +187,18 @@ mod tests {
 
                     break;
                 until 1 + 2 > 3;
+            end
             ",
         );
 
         assert!(p.parse().is_ok());
 
-        for ci in 0..p.emiter().pc() {
-            if let Some(c) = p.emiter().get_code(ci) {
+        for proto in &p.fs.prop().p {
+            println!("#######################");
+            let mut ci = 0;
+            for c in &proto.prop().codes {
+                ci += 1;
+
                 println!("{}\t{}", ci, c);
             }
         }

@@ -3,24 +3,32 @@ use std::{
     rc::Rc,
 };
 
-use super::LocVar;
+use crate::code::InterCode;
 
+use super::{LocVar, Upval};
+
+#[derive(Clone)]
 pub(crate) struct PrototypeContent {
     pub(crate) vararg: bool,
-    pub(crate) p: Vec<Prototype>,
 
     pub(crate) locvars: Vec<LocVar>,
+    pub(crate) upvars: Vec<Upval>,
+
+    pub(crate) codes: Vec<InterCode>,
 }
 
+#[derive(Clone)]
 pub(crate) struct Prototype(Rc<RefCell<PrototypeContent>>);
 
 impl Prototype {
     pub(crate) fn new() -> Self {
         Self(Rc::new(RefCell::new(PrototypeContent {
             vararg: false,
-            p: Vec::new(),
 
             locvars: Vec::new(),
+            upvars: Vec::new(),
+
+            codes: Vec::new(),
         })))
     }
 
