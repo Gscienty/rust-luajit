@@ -403,7 +403,7 @@ impl<'s> Emiter<'s> {
         self.modify_code(pc, |c| {
             *c = match *c {
                 InterCode::VARARG(ra, _) => InterCode::VARARG(ra, rc),
-                // TODO call
+                InterCode::CALL(ra, rb, _) => InterCode::CALL(ra, rb, rc),
                 _ => *c,
             };
 

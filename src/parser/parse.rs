@@ -199,7 +199,7 @@ mod tests {
                     return 4;
                 end
 
-                local c = a() + b();
+                local c = a(1, 2) + b();
 
                 return 1,2,3
             end

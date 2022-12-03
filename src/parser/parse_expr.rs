@@ -288,7 +288,6 @@ impl<'s> ParseExpr<'s> {
             _ => return Err(ParseErr::BadUsage),
         };
 
-        log::debug!("here {}", fexp.value);
         let base = self.p.preg().locreg(&fexp)?;
         let nparams = if argexp.hasmultret() {
             255
