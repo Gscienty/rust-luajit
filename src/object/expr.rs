@@ -154,6 +154,14 @@ impl Expr {
         }
     }
 
+    pub(crate) fn call(pc: usize) -> Self {
+        Expr {
+            value: ExprValue::Call(pc),
+            true_jumpto: None,
+            false_jumpto: None,
+        }
+    }
+
     pub(crate) fn local(vidx: usize, ridx: usize) -> Self {
         log::debug!("vidx: {}, ridx: {}", vidx, ridx);
 

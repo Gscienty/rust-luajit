@@ -130,9 +130,7 @@ impl<'s> ParseExpr<'s> {
                 // parse `function`
                 self.p.plex().skip()?;
                 // parse body_stmt
-                self.p.pstmt().body_stmt(false)?;
-
-                return Ok(Expr::todo());
+                return self.p.pstmt().body_stmt(false);
             }
             _ => return self.suffixed_exp(),
         };
@@ -252,28 +250,60 @@ impl<'s> ParseExpr<'s> {
     }
 
     // funcargs_exp ::= ( `(` [ exprlist_exp ] `)` | constructor_exp | string )
-    pub(super) fn funcargs_exp(&mut self) -> Result<(), ParseErr> {
+    pub(super) fn funcargs_exp(&mut self, fexp: Expr) -> Result<Expr, ParseErr> {
         log::debug!("parse funcargs_exp");
 
-        match self.p.lex(|x| x.token.clone()) {
+        let argexp = match self.p.lex(|x| x.token.clone()) {
             Token::Operator('(') => {
                 // parse `(`
                 self.p.plex().skip()?;
-                // parse exprlist_exp
-                self.exprlist_exp()?;
+
+                let exp = if match_token!(test: self.p, Token::Operator(')')) {
+                    Expr::void()
+                } else {
+                    // parse exprlist_exp
+                    let (_, exp) = self.exprlist_exp()?;
+                    if exp.hasmultret() {
+                        self.p.pcode().setreturns(&exp, 255)?;
+                    }
+
+                    exp
+                };
                 // parse `)`
                 match_token!(consume: self.p, Token::Operator(')'))?;
+
+                exp
             }
             Token::Operator('{') => {
                 self.constructor_exp()?;
+
+                Expr::todo()
             }
-            Token::String(_str) => {
+            Token::String(val) => {
                 // parse string
                 self.p.plex().skip()?;
+
+                Expr::from(val.as_str())
             }
             _ => return Err(ParseErr::BadUsage),
-        }
-        Ok(())
+        };
+
+        log::debug!("here {}", fexp.value);
+        let base = self.p.preg().locreg(&fexp)?;
+        let nparams = if argexp.hasmultret() {
+            255
+        } else {
+            if !matches!(argexp.value, ExprValue::Void) {
+                self.p.preg().exp_tonextreg(argexp)?;
+            }
+            self.p.fs.prop().freereg - (base + 1)
+        };
+
+        let pc = self.p.emiter().emit_call(base, nparams + 1, 2);
+
+        self.p.fs.prop_mut().freereg = base + 1;
+
+        Ok(Expr::call(pc))
     }
 
     // suffixed_exp ::= primary_exp { `.` name | `[` exp `]` | `:` name funcargs_exp | funcargs_exp }
@@ -281,17 +311,19 @@ impl<'s> ParseExpr<'s> {
         log::debug!("parse suffixed_exp");
 
         // parse primary_exp
-        let exp = self.primary_exp()?;
+        let mut exp = self.primary_exp()?;
 
         log::debug!("parse suffixed_exp primary_exp = {}", exp.value);
 
         loop {
-            match self.p.lex(|x| x.token.clone()) {
+            exp = match self.p.lex(|x| x.token.clone()) {
                 Token::Operator('.') => {
                     // parse '.'
                     self.p.plex().skip()?;
                     // parse name
                     let _name = self.p.plex().name()?;
+
+                    exp // TODO
                 }
                 Token::Operator('[') => {
                     // parse `[`
@@ -300,6 +332,8 @@ impl<'s> ParseExpr<'s> {
                     self.expr_exp()?;
                     // parse `]`
                     match_token!(consume: self.p, Token::Operator(']'))?;
+
+                    exp // TODO
                 }
                 Token::Operator(':') => {
                     // parse `:`
@@ -307,11 +341,13 @@ impl<'s> ParseExpr<'s> {
                     // parse name
                     let _name = self.p.plex().name()?;
                     // parse funcargs_exp
-                    self.funcargs_exp()?;
+                    self.funcargs_exp(exp)?
                 }
                 Token::Operator('(') | Token::String(_) | Token::Operator('{') => {
+                    log::debug!("parse funcargs_exp");
                     // parse funcargs_exp
-                    self.funcargs_exp()?;
+                    let fexp = self.p.preg().exp_tonextreg(exp)?;
+                    self.funcargs_exp(fexp)?
                 }
                 _ => break Ok(exp),
             }

@@ -318,6 +318,10 @@ impl<'s> Emiter<'s> {
         self.emit(InterCode::RETURN0)
     }
 
+    pub(super) fn emit_call(&mut self, ra: usize, rb: usize, rc: usize) -> usize {
+        self.emit(InterCode::CALL(ra as u8, rb as u8, rc as u8))
+    }
+
     pub(super) fn emit_closure(&mut self, rb: usize) -> Result<usize, ParseErr> {
         self.prevemit(InterCode::CLOSURE(255, rb as u32))
     }

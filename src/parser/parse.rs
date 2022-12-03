@@ -191,7 +191,15 @@ mod tests {
                     local c = 1 + b;
                 end
 
-                local a = 1;
+                local a = function () 
+                    return 3;
+                end
+
+                local b = function() 
+                    return 4;
+                end
+
+                local c = a() + b();
 
                 return 1,2,3
             end

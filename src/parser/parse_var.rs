@@ -1,6 +1,9 @@
 use std::ops::Deref;
 
-use crate::object::{Expr, ExprValue, LocVar, RefValue, Upval, Value, Var, VarKind};
+use crate::{
+    code::InterCode,
+    object::{Expr, ExprValue, LocVar, RefValue, Upval, Value, Var, VarKind},
+};
 
 use super::{FuncState, ParseErr, Parser};
 
@@ -180,9 +183,17 @@ impl<'s> ParseVar<'s> {
                 self.p.emiter().set_rc(pc, 2);
                 Ok(Expr::reloc(pc))
             }
-            ExprValue::Call(_pc) => {
-                // TODO
-                Ok(Expr::todo())
+            ExprValue::Call(pc) => {
+                self.p.emiter().set_rc(pc, 2);
+
+                self.p
+                    .emiter()
+                    .get_code(pc)
+                    .ok_or(ParseErr::BadUsage)
+                    .and_then(|c| match c {
+                        InterCode::CALL(ra, ..) => Ok(Expr::nonreloc(ra as usize)),
+                        _ => Err(ParseErr::BadUsage),
+                    })
             }
             _ => Ok(exp),
         }
@@ -262,6 +273,7 @@ impl<'s> ParseVar<'s> {
         }
 
         self.p.preg().exp_free(&exp)?;
+
         Ok(())
     }
 
@@ -376,7 +388,7 @@ impl<'s> ParseVar<'s> {
 
         if exp.hasmultret() {
             let extra = if needed + 1 >= 0 { needed + 1 } else { 0 } as usize;
-            self.p.pcode().setreturns(exp, extra)?;
+            self.p.pcode().setreturns(&exp, extra)?;
         } else {
             if !matches!(exp.value, ExprValue::Void) {
                 self.p.preg().exp_toanyreg(exp)?;

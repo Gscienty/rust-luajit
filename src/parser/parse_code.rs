@@ -632,7 +632,7 @@ impl<'s> ParseCode<'s> {
         Ok(Expr::jmp(self.p.emiter().emit_jmp()))
     }
 
-    pub(super) fn setreturns(&mut self, exp: Expr, nresults: usize) -> Result<(), ParseErr> {
+    pub(super) fn setreturns(&mut self, exp: &Expr, nresults: usize) -> Result<(), ParseErr> {
         match exp.value {
             ExprValue::Call(pc) => {
                 self.p.emiter().set_rc(pc, nresults as u8 + 1);

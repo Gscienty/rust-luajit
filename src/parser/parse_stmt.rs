@@ -650,7 +650,7 @@ impl<'s> ParseStmt<'s> {
             let (mut nret, exp) = self.p.pexp().exprlist_exp()?;
 
             if exp.hasmultret() {
-                self.p.pcode().setreturns(exp, 255)?;
+                self.p.pcode().setreturns(&exp, 255)?;
                 // TODO call
 
                 nret = 255;
