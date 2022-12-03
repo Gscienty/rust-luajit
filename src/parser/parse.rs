@@ -15,7 +15,6 @@ pub(crate) struct Parser {
     pub(super) nkgc: usize,
     pub(super) nkn: usize,
 
-    gfs: FuncState,
     pub(super) fs: FuncState,
 
     lexer: Lexer,
@@ -31,15 +30,12 @@ pub(crate) struct Parser {
 
 impl Parser {
     pub(super) fn new(source: &str) -> Self {
-        let gfs = FuncState::new();
-
         Self {
             gtab: Table::new(),
             nkgc: 0,
             nkn: 0,
 
-            gfs: gfs.clone(),
-            fs: gfs.clone(),
+            fs: FuncState::new(), // global func
             lexer: Lexer::new(source),
 
             actvar: Vec::new(),
@@ -155,7 +151,7 @@ mod tests {
 
         let mut p = Parser::new(
             "
-            function test()
+            function parent.test(a, b, c)
                 for i = 1, 5, 2 do
                     local t = 1;
                 end
@@ -188,12 +184,23 @@ mod tests {
                     break;
                 until 1 + 2 > 3;
             end
+
+            function parent.haha()
+                local function hehe() 
+                    local b = 2;
+                    local c = 1 + b;
+                end
+
+                local a = 1;
+
+                return 1,2,3
+            end
             ",
         );
 
         assert!(p.parse().is_ok());
 
-        for proto in &p.fs.prop().p {
+        for proto in &p.fs.prop().proto.prop().children_proto {
             println!("#######################");
             let mut ci = 0;
             for c in &proto.prop().codes {

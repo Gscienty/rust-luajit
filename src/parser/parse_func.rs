@@ -60,7 +60,13 @@ impl<'s> ParseFunc<'s> {
     pub(super) fn enterfunc(&mut self) {
         let fscope = FuncState::new();
 
-        self.p.fs.prop_mut().p.push(fscope.prop().proto.clone());
+        self.p
+            .fs
+            .prop_mut()
+            .proto
+            .prop_mut()
+            .children_proto
+            .push(fscope.prop().proto.clone());
 
         fscope.prop_mut().prev = Some(self.p.fs.clone());
         fscope.prop_mut().first_local = self.p.actvar.len();

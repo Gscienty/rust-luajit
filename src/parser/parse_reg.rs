@@ -271,6 +271,8 @@ impl<'s> ParseReg<'s> {
     }
 
     pub(super) fn exp_toanyreg(&mut self, exp: Expr) -> Result<Expr, ParseErr> {
+        log::debug!("exp toanyreg, exp: {}", exp.value);
+
         let exp = self.p.pvar().discharge_tovar(exp)?;
 
         if matches!(exp.value, ExprValue::Nonreloc(_)) {

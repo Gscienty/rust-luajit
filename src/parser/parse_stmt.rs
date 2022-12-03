@@ -15,34 +15,6 @@ impl<'s> ParseStmt<'s> {
         Self { p }
     }
 
-    fn adjust_assign(&mut self, nvars: usize, nexps: usize, exp: Expr) -> Result<(), ParseErr> {
-        log::debug!("adjust_assign, nvars: {}, nexps: {}", nvars, nexps);
-
-        let needed = nvars as i32 - nexps as i32;
-
-        if exp.hasmultret() {
-            let extra = if needed + 1 >= 0 { needed + 1 } else { 0 } as usize;
-            self.p.pcode().setreturns(exp, extra)?;
-        } else {
-            if !matches!(exp.value, ExprValue::Void) {
-                self.p.preg().exp_toanyreg(exp)?;
-            }
-
-            if needed > 0 {
-                let freereg = self.p.fs.prop().freereg;
-                self.p.emiter().emit_loadnil(freereg, needed as usize);
-            }
-        }
-
-        if needed > 0 {
-            self.p.preg().reserver_regs(needed as usize);
-        } else {
-            self.p.fs.prop_mut().freereg -= needed.abs() as usize;
-        }
-
-        Ok(())
-    }
-
     pub(super) fn block_follow(&self, withuntil: bool) -> bool {
         if match_token!(test: self.p, Token::Else | Token::ElseIf | Token::End | Token::EOF) {
             true
@@ -278,7 +250,7 @@ impl<'s> ParseStmt<'s> {
         // parse explist_exp
         let (nexps, exp) = self.p.pexp().exprlist_exp()?;
 
-        self.adjust_assign(4, nexps, exp)?;
+        self.p.pvar().adjust_assign(4, nexps, exp)?;
         self.p.pvar().adjust_localvars(4);
 
         self.p.fs.prop().block.prop_mut().upval = true;
@@ -370,7 +342,7 @@ impl<'s> ParseStmt<'s> {
     pub(super) fn parlist_stmt(&mut self) -> Result<(), ParseErr> {
         log::debug!("parse parlist_stmt");
 
-        let mut _nparams = 0;
+        let mut nparams = 0;
         let mut isvararg = false;
         if !match_token!(test: self.p, Token::Operator(')')) {
             loop {
@@ -379,7 +351,7 @@ impl<'s> ParseStmt<'s> {
                     Token::Name(name) => {
                         self.p.pvar().pushloc(Var::new(name.as_str()));
                         self.p.plex().skip()?;
-                        _nparams += 1;
+                        nparams += 1;
                     }
                     // parse `...`
                     Token::Dots => {
@@ -395,6 +367,16 @@ impl<'s> ParseStmt<'s> {
                 }
             }
         }
+
+        self.p.pvar().adjust_localvars(nparams);
+        let nactvar = self.p.fs.prop().nactvar;
+
+        self.p.fs.prop_mut().proto.prop_mut().nparams = nactvar;
+        if isvararg {
+            self.p.fs.prop_mut().proto.prop_mut().vararg = true;
+            self.p.emiter().emit_varargprep(nparams);
+        }
+        self.p.preg().reserver_regs(nactvar);
 
         Ok(())
     }
@@ -422,14 +404,13 @@ impl<'s> ParseStmt<'s> {
 
         let pfscope = self.p.fs.prop().prev.clone();
         let exp = if let Some(pfscope) = pfscope {
-            let closureid = pfscope.prop().p.len() - 1;
-            let pc = self.p.emiter().emit_closure(closureid);
+            let closureid = pfscope.prop().proto.prop().children_proto.len() - 1;
+            let pc = self.p.emiter().emit_closure(closureid)?;
 
             Expr::reloc(pc)
         } else {
             return Err(ParseErr::BadUsage);
         };
-
         self.p.pfscope().leavefunc()?;
 
         self.p.preg().exp_tonextreg(exp)
@@ -457,7 +438,6 @@ impl<'s> ParseStmt<'s> {
         let name = self.p.plex().name()?;
 
         let mut exp = self.p.pvar().single_var(&name)?;
-
         log::debug!("funcname exp: {}", exp.value);
 
         // parse { fieldsel_stmt }
@@ -481,12 +461,17 @@ impl<'s> ParseStmt<'s> {
         // parse `function`
         self.p.plex().skip()?;
         // parse funcname_stmt
-        let (ismethod, name_exp) = self.funcname_stmt()?;
+        let (ismethod, nexp) = self.funcname_stmt()?;
         // parse body_stmt
-        let body_exp = self.body_stmt(ismethod)?;
+        let bexp = self.body_stmt(ismethod)?;
 
         // store var
-        self.p.pvar().store_var(name_exp, body_exp)?;
+        self.p.pvar().store_var(&nexp, bexp)?;
+
+        match nexp.value {
+            ExprValue::IndexStr(reg, _) => self.p.preg().free_reg(reg)?,
+            _ => {}
+        }
 
         Ok(())
     }
@@ -495,10 +480,19 @@ impl<'s> ParseStmt<'s> {
     pub(super) fn localfunc_stmt(&mut self) -> Result<(), ParseErr> {
         log::debug!("parse localfunc_stmt");
 
+        let fvar = self.p.fs.prop().nactvar;
         // parse name
-        let _name = self.p.plex().name()?;
+        let name = self.p.plex().name()?;
+        self.p.pvar().pushloc(Var::new(&name));
+        self.p.pvar().adjust_localvars(1);
+
         // parse body_stmt
         self.body_stmt(false)?;
+
+        let pc = self.p.emiter().pc();
+        if let Some(var) = self.p.fs.prop_mut().proto.prop_mut().locvars.get_mut(fvar) {
+            var.start_pc = pc;
+        }
 
         Ok(())
     }
@@ -584,7 +578,7 @@ impl<'s> ParseStmt<'s> {
             self.p.pvar().adjust_localvars(nvars - 1);
             self.p.fs.prop_mut().nactvar += 1;
         } else {
-            self.adjust_assign(nvars, nexps, exp)?;
+            self.p.pvar().adjust_assign(nvars, nexps, exp)?;
             self.p.pvar().adjust_localvars(nvars);
         }
 
@@ -648,10 +642,30 @@ impl<'s> ParseStmt<'s> {
         // parse `return`
         self.p.plex().skip()?;
 
-        // parse exprlist_exp
-        if !self.block_follow(true) && !match_token!(test: self.p, Token::Operator(';')) {
-            self.p.pexp().exprlist_exp()?;
-        }
+        let mut first = self.p.pvar().nvars_stack();
+        let nret = if self.block_follow(true) || match_token!(test: self.p, Token::Operator(';')) {
+            0
+        } else {
+            // parse exprlist_exp
+            let (mut nret, exp) = self.p.pexp().exprlist_exp()?;
+
+            if exp.hasmultret() {
+                self.p.pcode().setreturns(exp, 255)?;
+                // TODO call
+
+                nret = 255;
+            } else {
+                if nret == 1 {
+                    let exp = self.p.preg().exp_toanyreg(exp)?;
+                    first = self.p.preg().locreg(&exp)?;
+                } else {
+                    self.p.preg().exp_toanyreg(exp)?;
+                }
+            }
+
+            nret
+        };
+        self.p.pcode().ret(first, nret);
 
         // parse `;`
         match_token!(test_consume: self.p, Token::Operator(';'));

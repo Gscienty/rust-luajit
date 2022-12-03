@@ -30,8 +30,6 @@ impl<'s> ParseVar<'s> {
 
         let nactvar = self.p.fs.prop().nactvar;
 
-        log::debug!("nactvar = {}", nactvar);
-
         for idx in (0..nactvar).rev() {
             match self.getlocaux(fs, idx) {
                 Some(v) if v.name.eq(name) => {
@@ -43,7 +41,6 @@ impl<'s> ParseVar<'s> {
                         _ => Expr::local(idx, v.r_idx),
                     })
                 }
-                Some(v) => log::debug!("searched varname: {}", v.name),
                 _ => {}
             }
         }
@@ -123,7 +120,6 @@ impl<'s> ParseVar<'s> {
         let fs = self.p.fs.clone();
 
         let exp = self.single_varaux(&fs, name, true)?;
-
         if matches!(exp.value, ExprValue::Void) {
             log::debug!("global name: {}", name);
 
@@ -210,7 +206,7 @@ impl<'s> ParseVar<'s> {
         }
     }
 
-    pub(super) fn store_var(&mut self, var: Expr, exp: Expr) -> Result<(), ParseErr> {
+    pub(super) fn store_var(&mut self, var: &Expr, exp: Expr) -> Result<(), ParseErr> {
         log::debug!("store var, var: {}, exp: {}", var.value, exp.value);
         let mut exp = exp;
 
@@ -366,5 +362,38 @@ impl<'s> ParseVar<'s> {
         });
 
         self.p.fs.prop().proto.prop().locvars.len() - 1
+    }
+
+    pub(super) fn adjust_assign(
+        &mut self,
+        nvars: usize,
+        nexps: usize,
+        exp: Expr,
+    ) -> Result<(), ParseErr> {
+        log::debug!("adjust_assign, nvars: {}, nexps: {}", nvars, nexps);
+
+        let needed = nvars as i32 - nexps as i32;
+
+        if exp.hasmultret() {
+            let extra = if needed + 1 >= 0 { needed + 1 } else { 0 } as usize;
+            self.p.pcode().setreturns(exp, extra)?;
+        } else {
+            if !matches!(exp.value, ExprValue::Void) {
+                self.p.preg().exp_toanyreg(exp)?;
+            }
+
+            if needed > 0 {
+                let freereg = self.p.fs.prop().freereg;
+                self.p.emiter().emit_loadnil(freereg, needed as usize);
+            }
+        }
+
+        if needed > 0 {
+            self.p.preg().reserver_regs(needed as usize);
+        } else {
+            self.p.fs.prop_mut().freereg -= needed.abs() as usize;
+        }
+
+        Ok(())
     }
 }

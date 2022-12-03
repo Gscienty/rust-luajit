@@ -74,6 +74,7 @@ pub(crate) enum InterCode {
     RETURN0,                    // ; return
     RETURN1(u8),                // rA; return R[rA]
     CLOSURE(u8, u32),           // rA, Bx; R[rA] = closure(KPROTO[Bx])
+    VARARGPREP(u8),             // adjust vararg parameters
 }
 
 impl Display for InterCode {
@@ -83,7 +84,7 @@ impl Display for InterCode {
             Self::LOADTRUE(ra) => write!(f, "LOADTRUE\t${}", ra),
             Self::LOADFALSE(ra) => write!(f, "LOADFALSE\t${}", ra),
             Self::LFALSESKIP(ra) => write!(f, "LFLASESKIP\t{}", ra),
-            Self::LOADK(ra, rb) => write!(f, "LOADK\t${}, ${}", ra, rb),
+            Self::LOADK(ra, rb) => write!(f, "LOADK\t${}, &{}", ra, rb),
             Self::LOADINT(ra, rb) => write!(f, "LOADINT\t${}, #{}", ra, rb),
             Self::LOADFLOAT(ra, rb) => write!(f, "LOADFLOAT\t${}, #{}", ra, rb),
             Self::VARARG(ra, rc) => write!(f, "VARARG\t${}, ${}", ra, rc),
@@ -154,6 +155,7 @@ impl Display for InterCode {
             Self::RETURN1(ra) => write!(f, "RET1\t${}", ra),
             Self::RETURN0 => write!(f, "RET0"),
             Self::CLOSURE(ra, rb) => write!(f, "CLOSURE ${} &{}", ra, rb),
+            Self::VARARGPREP(ra) => write!(f, "VARARGP ${}", ra),
         }
     }
 }

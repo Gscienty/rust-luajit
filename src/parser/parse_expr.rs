@@ -214,6 +214,8 @@ impl<'s> ParseExpr<'s> {
         let mut exp = self.expr_exp()?;
 
         while match_token!(test_consume: self.p, Token::Operator(',')) {
+            self.p.preg().exp_tonextreg(exp)?;
+
             exp = self.expr_exp()?;
             n += 1;
         }

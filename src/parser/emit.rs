@@ -1,6 +1,6 @@
 use crate::code::InterCode;
 
-use super::Parser;
+use super::{ParseErr, Parser};
 
 pub(super) struct Emiter<'s> {
     p: &'s mut Parser,
@@ -9,6 +9,18 @@ pub(super) struct Emiter<'s> {
 impl<'s> Emiter<'s> {
     pub(super) fn new(p: &'s mut Parser) -> Self {
         Self { p }
+    }
+
+    fn prevemit(&mut self, code: InterCode) -> Result<usize, ParseErr> {
+        log::debug!("prev emit code: {}", code);
+
+        if let Some(pfs) = self.p.fs.prop().prev.clone() {
+            pfs.prop_mut().proto.prop_mut().codes.push(code);
+
+            Ok(pfs.prop().proto.prop().codes.len() - 1)
+        } else {
+            Err(ParseErr::BadUsage)
+        }
     }
 
     fn emit(&mut self, code: InterCode) -> usize {
@@ -24,6 +36,10 @@ impl<'s> Emiter<'s> {
 
     pub(super) fn emit_vararg(&mut self) -> usize {
         self.emit(InterCode::VARARG(0, 1))
+    }
+
+    pub(super) fn emit_varargprep(&mut self, nparams: usize) -> usize {
+        self.emit(InterCode::VARARGPREP(nparams as u8))
     }
 
     pub(super) fn emit_loadnil(&mut self, freg: usize, n: usize) -> usize {
@@ -302,8 +318,8 @@ impl<'s> Emiter<'s> {
         self.emit(InterCode::RETURN0)
     }
 
-    pub(super) fn emit_closure(&mut self, rb: usize) -> usize {
-        self.emit(InterCode::CLOSURE(255, rb as u32))
+    pub(super) fn emit_closure(&mut self, rb: usize) -> Result<usize, ParseErr> {
+        self.prevemit(InterCode::CLOSURE(255, rb as u32))
     }
 
     pub(super) fn set_ra(&mut self, pc: usize, ra: usize) {

@@ -10,7 +10,6 @@ use super::Block;
 pub(super) struct FuncStateContent {
     pub(super) prev: Option<FuncState>,
     pub(super) proto: Prototype,
-    pub(crate) p: Vec<Prototype>,
     pub(super) block: Block,
 
     pub(super) nk: usize,
@@ -34,7 +33,6 @@ impl FuncState {
 
         FuncState(Rc::new(RefCell::new(FuncStateContent {
             prev: None,
-            p: vec![proto.clone()],
             proto,
             block: Block::new(),
 
