@@ -2,13 +2,10 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     lexer::Lexer,
-    object::{ConstantPool, LabelDesc, RefValue, Table, Upval, Var, VarKind},
+    object::{ConstantPool, LabelDesc, Prototype, RefValue, Table, Upval, Var, VarKind},
 };
 
-use super::{
-    Emiter, FuncState, ParseCode, ParseErr, ParseExpr, ParseFunc, ParseGTab, ParseLabel, ParseLex,
-    ParseReg, ParseStmt, ParseTab, ParseVar,
-};
+use super::{Emiter, FuncState, ParseErr, ParseExpr, ParseFunc, ParseLex, ParseStmt, ParseVar};
 
 pub(crate) struct Parser {
     gtab: RefValue,
@@ -29,13 +26,13 @@ pub(crate) struct Parser {
 }
 
 impl Parser {
-    pub(super) fn new(source: &str) -> Self {
+    pub(crate) fn new(source: &str, proto: Prototype) -> Self {
         Self {
             gtab: Table::new(),
             nkgc: 0,
             nkn: 0,
 
-            fs: FuncState::new(), // global func
+            fs: FuncState::new(proto), // global func
             lexer: Lexer::new(source),
 
             actvar: Vec::new(),
@@ -96,14 +93,6 @@ impl Parser {
         ParseStmt::new(self)
     }
 
-    pub(super) fn pcode<'s>(&'s mut self) -> ParseCode {
-        ParseCode::new(self)
-    }
-
-    pub(super) fn preg<'s>(&'s mut self) -> ParseReg {
-        ParseReg::new(self)
-    }
-
     pub(super) fn pvar<'s>(&'s mut self) -> ParseVar {
         ParseVar::new(self)
     }
@@ -114,18 +103,6 @@ impl Parser {
 
     pub(super) fn pfscope<'s>(&'s mut self) -> ParseFunc {
         ParseFunc::new(self)
-    }
-
-    pub(super) fn ptab<'s>(&'s mut self) -> ParseTab {
-        ParseTab::new(self)
-    }
-
-    pub(super) fn pgtab<'s>(&'s mut self) -> ParseGTab {
-        ParseGTab::new(self)
-    }
-
-    pub(super) fn plabel<'s>(&'s mut self) -> ParseLabel {
-        ParseLabel::new(self)
     }
 
     pub(crate) fn parse(&mut self) -> Result<(), ParseErr> {
@@ -142,12 +119,14 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use crate::{parser::Parser, utils::Logger};
+    use crate::{object::Prototype, parser::Parser, utils::Logger};
 
     #[test]
     fn test_code_concat() {
         log::set_logger(&Logger {}).unwrap();
         log::set_max_level(log::LevelFilter::Debug);
+
+        let proto = Prototype::new();
 
         let mut p = Parser::new(
             "
@@ -204,6 +183,7 @@ mod tests {
                 return 1,2,3
             end
             ",
+            proto,
         );
 
         assert!(p.parse().is_ok());

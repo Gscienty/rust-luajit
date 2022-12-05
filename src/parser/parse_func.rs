@@ -1,3 +1,5 @@
+use crate::object::Prototype;
+
 use super::{Block, FuncState, ParseErr, Parser};
 
 pub(super) struct ParseFunc<'s> {
@@ -33,7 +35,7 @@ impl<'s> ParseFunc<'s> {
         self.p.pvar().removevars(level);
 
         let hasclose = if block.prop().is_loop {
-            self.p.plabel().createlabel("break", false)?
+            self.p.pexp().createlabel("break", false)?
         } else {
             false
         };
@@ -49,7 +51,7 @@ impl<'s> ParseFunc<'s> {
 
         if let Some(prev_block) = &block.prop().prev {
             self.p.fs.prop_mut().block = prev_block.clone();
-            self.p.plabel().movegotosout(&block)?;
+            self.p.pexp().movegotosout(&block)?;
         } else if block.prop().firstgoto < self.p.goto.len() {
             return Err(ParseErr::BadUsage);
         }
@@ -58,11 +60,11 @@ impl<'s> ParseFunc<'s> {
     }
 
     pub(super) fn enterfunc(&mut self) {
-        let fscope = FuncState::new();
+        let fscope = FuncState::new(Prototype::new());
 
         self.p
             .fs
-            .prop_mut()
+            .prop()
             .proto
             .prop_mut()
             .children_proto
@@ -80,8 +82,8 @@ impl<'s> ParseFunc<'s> {
     }
 
     pub(super) fn leavefunc(&mut self) -> Result<(), ParseErr> {
-        let nvars = self.p.pvar().nvars_stack();
-        self.p.pcode().ret(nvars, 0);
+        let nvars = self.p.pvar().instack_nvars();
+        self.p.pexp().ret(nvars, 0);
 
         self.leaveblock()?;
 

@@ -76,6 +76,7 @@ pub(crate) enum InterCode {
     CLOSURE(u8, u32),           // rA, Bx; R[rA] = closure(KPROTO[Bx])
     VARARGPREP(u8),             // adjust vararg parameters
     CALL(u8, u8, u8), // rA, rB, rC; R[rA], ... , R[rA+rC-2] := R[rA](R[rA+1], ... , R[rA+rB-1])
+    TAILCALL(u8, u8, u8), // rA, rB, rC; R[rA], ... , R[rA+rC-2] := R[rA](R[rA+1], ... , R[rA+rB-1])
 }
 
 impl Display for InterCode {
@@ -158,6 +159,7 @@ impl Display for InterCode {
             Self::CLOSURE(ra, rb) => write!(f, "CLOSURE\t${} &{}", ra, rb),
             Self::VARARGPREP(ra) => write!(f, "VARARGP\t${}", ra),
             Self::CALL(ra, rb, rc) => write!(f, "CALL\t${} #{} #{}", ra, rb, rc),
+            Self::TAILCALL(ra, rb, rc) => write!(f, "TCALL\t${} #{} #{}", ra, rb, rc),
         }
     }
 }

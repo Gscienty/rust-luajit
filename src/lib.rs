@@ -3,9 +3,11 @@
 mod utils;
 
 mod code;
+mod errors;
 mod lexer;
 mod object;
 mod parser;
+mod state;
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right

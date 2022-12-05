@@ -24,7 +24,7 @@ pub(crate) struct Prototype(Rc<RefCell<PrototypeContent>>);
 
 impl Prototype {
     pub(crate) fn new() -> Self {
-        let mut p = Self(Rc::new(RefCell::new(PrototypeContent {
+        let p = Self(Rc::new(RefCell::new(PrototypeContent {
             nparams: 0,
             vararg: false,
             children_proto: Vec::new(),
@@ -46,7 +46,7 @@ impl Prototype {
         self.0.as_ref().borrow()
     }
 
-    pub(crate) fn prop_mut(&mut self) -> RefMut<PrototypeContent> {
+    pub(crate) fn prop_mut(&self) -> RefMut<PrototypeContent> {
         self.0.as_ref().borrow_mut()
     }
 }

@@ -4,35 +4,25 @@ mod errors;
 mod parse;
 mod parse_expr;
 mod parse_func;
-mod parse_label;
 mod parse_lex;
-mod parse_reg;
 mod parse_stmt;
-mod parse_tab;
 mod parse_var;
 mod unopr;
 
-pub(super) use binopr::*;
-pub(super) use emit::*;
-pub(super) use parse_code::*;
-pub(super) use parse_expr::*;
-pub(super) use parse_func::*;
-pub(super) use parse_label::*;
-pub(super) use parse_lex::*;
-pub(super) use parse_reg::*;
-pub(super) use parse_stmt::*;
-pub(super) use parse_tab::*;
-pub(super) use parse_var::*;
-pub(super) use unopr::*;
+use binopr::*;
+use emit::*;
+use parse_expr::*;
+use parse_func::*;
+use parse_lex::*;
+use parse_stmt::*;
+use parse_var::*;
+use unopr::*;
 
 mod block;
 mod func;
-mod parse_code;
-mod parse_gtab;
 
-pub(super) use block::*;
-pub(super) use func::*;
-pub(super) use parse_gtab::*;
+use block::*;
+use func::*;
 
 pub(crate) use errors::*;
 pub(crate) use parse::*;

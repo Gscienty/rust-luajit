@@ -28,9 +28,7 @@ pub(super) struct FuncStateContent {
 pub(super) struct FuncState(Rc<RefCell<FuncStateContent>>);
 
 impl FuncState {
-    pub(super) fn new() -> Self {
-        let proto = Prototype::new();
-
+    pub(super) fn new(proto: Prototype) -> Self {
         FuncState(Rc::new(RefCell::new(FuncStateContent {
             prev: None,
             proto,
