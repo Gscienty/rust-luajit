@@ -322,6 +322,22 @@ impl<'s> Emiter<'s> {
         self.emit(InterCode::CALL(ra as u8, rb as u8, rc as u8))
     }
 
+    pub(super) fn emit_newtable(&mut self) -> usize {
+        self.emit(InterCode::NEWTABLE(255, 255, 255, false))
+    }
+
+    pub(super) fn emit_setlist(&mut self, ra: usize, rb: usize, rc: usize) -> usize {
+        self.emit(InterCode::SETLIST(ra as u8, rb as u8, rc as u8, false))
+    }
+
+    pub(super) fn emit_nop(&mut self) -> usize {
+        self.emit(InterCode::NOP)
+    }
+
+    pub(super) fn emit_self(&mut self, ra: usize, rb: usize, rc: usize, k: bool) -> usize {
+        self.emit(InterCode::SELF(ra as u8, rb as u8, rc as u8, k))
+    }
+
     pub(super) fn emit_closure(&mut self, rb: usize) -> Result<usize, ParseErr> {
         self.prevemit(InterCode::CLOSURE(255, rb as u32))
     }

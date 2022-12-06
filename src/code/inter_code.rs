@@ -77,6 +77,10 @@ pub(crate) enum InterCode {
     VARARGPREP(u8),             // adjust vararg parameters
     CALL(u8, u8, u8), // rA, rB, rC; R[rA], ... , R[rA+rC-2] := R[rA](R[rA+1], ... , R[rA+rB-1])
     TAILCALL(u8, u8, u8), // rA, rB, rC; R[rA], ... , R[rA+rC-2] := R[rA](R[rA+1], ... , R[rA+rB-1])
+    NEWTABLE(u8, u8, u8, bool), // rA; R[rA] = {}
+    NOP,
+    SETLIST(u8, u8, u8, bool), // rA, rB, rC; R[rA][rC+i] := R[rA+i], 1 <= i <= rB
+    SELF(u8, u8, u8, bool),    // rA, rB, rC; R[rA+1]; R[rB]; R[rA] = R[rB][RK[rC]]
 }
 
 impl Display for InterCode {
@@ -160,6 +164,10 @@ impl Display for InterCode {
             Self::VARARGPREP(ra) => write!(f, "VARARGP\t${}", ra),
             Self::CALL(ra, rb, rc) => write!(f, "CALL\t${} #{} #{}", ra, rb, rc),
             Self::TAILCALL(ra, rb, rc) => write!(f, "TCALL\t${} #{} #{}", ra, rb, rc),
+            Self::NEWTABLE(ra, rb, rc, k) => write!(f, "NEWTAB\t${} #{} #{} {}", ra, rb, rc, k),
+            Self::NOP => write!(f, "NOP"),
+            Self::SETLIST(ra, rb, rc, k) => write!(f, "SETLIST\t${} #{} #{} {}", ra, rb, rc, k),
+            Self::SELF(ra, rb, rc, k) => write!(f, "SELF\t${} ${} &${} {}", ra, rb, rc, k),
         }
     }
 }

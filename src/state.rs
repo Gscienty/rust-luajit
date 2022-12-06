@@ -38,6 +38,7 @@ mod tests {
             end
 
             function sub(a, b)
+                local map = { ['key'] = 'value'};
                 return add(a, b);
             end
         ",

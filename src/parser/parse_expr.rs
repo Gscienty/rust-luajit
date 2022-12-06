@@ -2,7 +2,7 @@ use crate::{
     code::{codelimit, InterCode},
     lexer::Token,
     match_token,
-    object::{Expr, ExprValue, LabelDesc},
+    object::{Expr, ExprValue, LabelDesc, TableCtor},
 };
 
 use super::{block::Block, BinOpr, ParseErr, Parser, UnOpr};
@@ -16,76 +16,106 @@ impl<'s> ParseExpr<'s> {
         Self { p }
     }
 
+    // index_exp = `[` exp `]`
+    fn index_exp(&mut self) -> Result<Expr, ParseErr> {
+        self.p.plex().skip()?;
+        let exp = self.expr_exp()?;
+        match_token!(consume: self.p, Token::Operator(']'))?;
+
+        Ok(exp)
+    }
+
     // recfield_exp ::= (name | `[` exp `]`) = exp
-    pub(super) fn recfield_exp(&mut self) -> Result<(), ParseErr> {
+    pub(super) fn recfield_exp(&mut self, tc: &mut TableCtor) -> Result<(), ParseErr> {
         log::debug!("parse recfield_exp");
 
-        match self.p.lex(|x| x.token.clone()) {
-            Token::Name(_name) => {
+        let memreg = self.p.fs.prop().freereg;
+
+        let kexp = match self.p.lex(|x| x.token.clone()) {
+            Token::Name(name) => {
                 // parse name
                 self.p.plex().skip()?;
+
+                Expr::from(name.as_str())
             }
-            Token::Operator('[') => {
-                // parse `[`
-                self.p.plex().skip()?;
-                // parse exp
-                self.expr_exp()?;
-                // parse `]`
-                match_token!(consume: self.p, Token::Operator(']'))?;
-            }
+            Token::Operator('[') => self.index_exp()?,
             _ => return Err(ParseErr::BadUsage),
-        }
+        };
+        tc.nh += 1;
+
         // parse `=`
         match_token!(consume: self.p, Token::Operator('='))?;
+
+        let tkexp = self.p.pvar().indexed(tc.texp.clone(), kexp)?;
         // parse exp
-        self.expr_exp()?;
+        let vexp = self.expr_exp()?;
+        self.p.pvar().store_var(&tkexp, vexp)?;
+
+        self.p.fs.prop_mut().freereg = memreg;
 
         Ok(())
     }
 
     // listfield_exp ::= expr_exp
-    pub(super) fn listfield_exp(&mut self) -> Result<(), ParseErr> {
+    pub(super) fn listfield_exp(&mut self, tc: &mut TableCtor) -> Result<(), ParseErr> {
         log::debug!("parse listfield_exp");
 
-        self.expr_exp()?;
+        tc.lexp = self.expr_exp()?;
+        tc.tostore += 1;
 
         Ok(())
     }
 
     // field_exp ::= listfield_exp | recfield_exp
-    pub(super) fn field_exp(&mut self) -> Result<(), ParseErr> {
+    pub(super) fn field_exp(&mut self, tc: &mut TableCtor) -> Result<(), ParseErr> {
         log::debug!("parse field_exp");
 
         match self.p.lex(|x| x.token.clone()) {
             Token::Name(_) => {
                 let lookahead = self.p.lex_mut(|x| x.token_lookahead())?;
                 if matches!(lookahead, Token::Operator('=')) {
-                    self.recfield_exp()?;
+                    self.recfield_exp(tc)
                 } else {
-                    self.listfield_exp()?;
+                    self.listfield_exp(tc)
                 }
             }
-            Token::Operator('[') => self.recfield_exp()?,
-            _ => self.listfield_exp()?,
+            Token::Operator('[') => self.recfield_exp(tc),
+            _ => self.listfield_exp(tc),
         }
-        Ok(())
     }
 
     // constructor_exp ::= `{` [ field_exp { sep field_exp } [ sep ] ] `}`
     // sep ::= `,` | `;`
-    pub(super) fn constructor_exp(&mut self) -> Result<(), ParseErr> {
+    pub(super) fn constructor_exp(&mut self) -> Result<Expr, ParseErr> {
         log::debug!("parse constructor_exp");
+
+        let mut tc = TableCtor::new();
+        let pc = self.p.emiter().emit_newtable();
+        self.p.emiter().emit_nop();
+
+        let treg = self.p.fs.prop().freereg;
+        tc.texp = Expr::nonreloc(treg);
+        self.p.pvar().reserver_regs(1);
 
         // parse `{`
         match_token!(consume: self.p, Token::Operator('{'))?;
-
         loop {
             if match_token!(test: self.p, Token::Operator('}')) {
                 break;
             }
 
+            // close listfield
+            if !matches!(tc.lexp.value, ExprValue::Void) {
+                self.p.pvar().exp_tonextreg(tc.lexp.clone())?;
+                tc.lexp = Expr::void();
+
+                // flush, setlist
+                self.p.emiter().emit_setlist(treg, tc.na, tc.tostore);
+                tc.na += tc.tostore;
+                tc.tostore = 0;
+            }
             // parse field_exp
-            self.field_exp()?;
+            self.field_exp(&mut tc)?;
 
             // parse sep
             if !match_token!(test_consume: self.p, Token::Operator(',' | ';')) {
@@ -95,7 +125,25 @@ impl<'s> ParseExpr<'s> {
         // parse `}`
         match_token!(consume: self.p, Token::Operator('}'))?;
 
-        Ok(())
+        // last listfield
+        if tc.tostore != 0 {
+            if tc.lexp.hasmultret() {
+                self.setreturns(&tc.lexp, 254)?;
+                self.p.emiter().emit_setlist(treg, tc.na, 0);
+                tc.na -= 1;
+            } else {
+                if !matches!(tc.lexp.value, ExprValue::Void) {
+                    self.p.pvar().exp_tonextreg(tc.lexp.clone())?;
+                }
+                self.p.emiter().emit_setlist(treg, tc.na, tc.tostore);
+            }
+
+            tc.na += tc.tostore;
+        }
+
+        self.settablesize(pc, treg, tc.na, tc.nh);
+
+        Ok(tc.texp)
     }
 
     // simple_exp -> FLT | INT | STRING | NIL | TRUE | FALSE | ... | constructor_exp | FUNCTION body
@@ -117,8 +165,7 @@ impl<'s> ParseExpr<'s> {
                 Expr::vararg(self.p.emiter().emit_vararg())
             }
             Token::Operator('{') => {
-                self.constructor_exp()?;
-                return Ok(Expr::todo());
+                return self.constructor_exp();
             }
             Token::Function => {
                 // parse `function`
@@ -267,11 +314,7 @@ impl<'s> ParseExpr<'s> {
 
                 exp
             }
-            Token::Operator('{') => {
-                self.constructor_exp()?;
-
-                Expr::todo()
-            }
+            Token::Operator('{') => self.constructor_exp()?,
             Token::String(val) => {
                 // parse string
                 self.p.plex().skip()?;
@@ -309,29 +352,22 @@ impl<'s> ParseExpr<'s> {
 
         loop {
             exp = match self.p.lex(|x| x.token.clone()) {
-                Token::Operator('.') => {
-                    // parse '.'
-                    self.p.plex().skip()?;
-                    // parse name
-                    let _name = self.p.plex().name()?;
-
-                    exp // TODO
-                }
+                Token::Operator('.') => self.p.pstmt().fieldsel_stmt(exp)?,
                 Token::Operator('[') => {
-                    // parse `[`
-                    self.p.plex().skip()?;
-                    // parse exp
-                    self.expr_exp()?;
-                    // parse `]`
-                    match_token!(consume: self.p, Token::Operator(']'))?;
+                    let texp = self.p.pvar().exp_toanyregup(exp)?;
+                    let kexp = self.index_exp()?;
 
-                    exp // TODO
+                    self.p.pvar().indexed(texp, kexp)?
                 }
                 Token::Operator(':') => {
                     // parse `:`
                     self.p.plex().skip()?;
                     // parse name
-                    let _name = self.p.plex().name()?;
+                    let name = self.p.plex().name()?;
+                    let kexp = Expr::from(name.as_str());
+
+                    let exp = self.self_exp(exp, kexp)?;
+
                     // parse funcargs_exp
                     self.funcargs_exp(exp)?
                 }
@@ -1122,5 +1158,38 @@ impl<'s> ParseExpr<'s> {
         }
 
         Ok(())
+    }
+
+    fn settablesize(&mut self, pc: usize, ra: usize, asize: usize, hsize: usize) {
+        // may use extra
+
+        self.p.emiter().modify_code(pc, |c| {
+            *c = match *c {
+                InterCode::NEWTABLE(..) => {
+                    InterCode::NEWTABLE(ra as u8, hsize as u8, asize as u8, false)
+                }
+                _ => *c,
+            }
+        })
+    }
+
+    fn self_exp(&mut self, texp: Expr, kexp: Expr) -> Result<Expr, ParseErr> {
+        let texp = self.p.pvar().exp_toanyreg(texp)?;
+        let treg = self.p.pvar().locreg(&texp)?;
+        self.p.pvar().exp_free(&texp)?;
+
+        let reg = self.p.fs.prop().freereg;
+        let exp = Expr::nonreloc(reg);
+        self.p.pvar().reserver_regs(2);
+
+        let kexp = self.p.pvar().exp_tokreg(kexp)?;
+        match kexp.value {
+            ExprValue::Nonreloc(kreg) => self.p.emiter().emit_self(reg, treg, kreg, false),
+            ExprValue::K(kreg) => self.p.emiter().emit_self(reg, treg, kreg, true),
+            _ => unreachable!(),
+        };
+        self.p.pvar().exp_free(&kexp)?;
+
+        Ok(exp)
     }
 }
