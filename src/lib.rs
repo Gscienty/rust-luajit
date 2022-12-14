@@ -8,6 +8,7 @@ mod lexer;
 mod object;
 mod parser;
 mod state;
+mod vm;
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right

@@ -725,21 +725,42 @@ impl<'s> ParseStmt<'s> {
 
     // assigment_stmt ::= suffixed_exp restassign_stmt
     // restassign_stmt ::= ',' suffixed_exp restassign_stmt | `=` explist_exp
-    pub(super) fn restassign_stmt(&mut self) -> Result<(), ParseErr> {
+    pub(super) fn restassign_stmt(&mut self, assignlist: &mut Vec<Expr>) -> Result<(), ParseErr> {
         log::debug!("parse restassign_stmt");
 
         // parse `,`
         if match_token!(test_consume: self.p, Token::Operator(',')) {
             // parse suffixed_exp
-            self.p.pexp().suffixed_exp()?;
+            let exp = self.p.pexp().suffixed_exp()?;
+            assignlist.push(exp);
+
             // parse restassign_stmt
-            self.restassign_stmt()?;
+            self.restassign_stmt(assignlist)?;
         } else {
             // parse `=`
             match_token!(consume: self.p, Token::Operator('='))?;
+
             // parse exprlist_exp
-            self.p.pexp().exprlist_exp()?;
+            let (nexps, exp) = self.p.pexp().exprlist_exp()?;
+            if nexps != assignlist.len() {
+                self.p.pvar().adjust_assign(assignlist.len(), nexps, exp)?;
+            } else {
+                let exp = self.p.pexp().setonereturn(exp)?;
+                match assignlist.last() {
+                    Some(var) => self.p.pvar().store_var(var, exp)?,
+                    _ => return Err(ParseErr::BadUsage),
+                }
+
+                return Ok(());
+            }
         }
+
+        let exp = Expr::nonreloc(self.p.fs.prop().freereg - 1);
+        match assignlist.last() {
+            Some(var) => self.p.pvar().store_var(var, exp)?,
+            _ => return Err(ParseErr::BadUsage),
+        }
+
         Ok(())
     }
 
@@ -747,13 +768,23 @@ impl<'s> ParseStmt<'s> {
     pub(super) fn expr_stmt(&mut self) -> Result<(), ParseErr> {
         log::debug!("parse expr_stmt");
 
+        let mut assignlist = Vec::<Expr>::new();
+
         // parse suffixed_exp
-        self.p.pexp().suffixed_exp()?;
+        let exp = self.p.pexp().suffixed_exp()?;
+        assignlist.push(exp);
 
         if match_token!(test: self.p, Token::Operator('=' | ',')) {
-            self.restassign_stmt()?;
+            // assignment_stmt
+
+            self.restassign_stmt(&mut assignlist)?;
         } else {
-            // func
+            // func_stmt
+
+            match assignlist.last().and_then(|e| Some(&e.value)) {
+                Some(ExprValue::Call(pc)) => self.p.emiter().set_rc(*pc, 1),
+                _ => {}
+            }
         }
 
         Ok(())

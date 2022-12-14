@@ -1030,18 +1030,33 @@ impl<'s> ParseExpr<'s> {
         Ok(Expr::jmp(self.p.emiter().emit_jmp()))
     }
 
+    pub(super) fn setonereturn(&mut self, exp: Expr) -> Result<Expr, ParseErr> {
+        match exp.value {
+            ExprValue::Call(pc) => match self.p.emiter().get_code(pc) {
+                Some(InterCode::CALL(ra, _, _)) => Ok(Expr::nonreloc(ra)),
+                _ => Err(ParseErr::BadUsage),
+            },
+            ExprValue::VarArg(pc) => {
+                self.p.emiter().set_rc(pc, 2);
+
+                Ok(Expr::reloc(pc))
+            }
+            _ => Ok(exp),
+        }
+    }
+
     pub(super) fn setreturns(&mut self, exp: &Expr, nresults: usize) -> Result<(), ParseErr> {
         match exp.value {
             ExprValue::Call(pc) => {
                 log::debug!("set returns call, pc: {}", pc);
 
-                self.p.emiter().set_rc(pc, nresults as u8 + 1);
+                self.p.emiter().set_rc(pc, nresults + 1);
                 Ok(())
             }
             ExprValue::VarArg(pc) => {
                 let freereg = self.p.fs.prop().freereg;
 
-                self.p.emiter().set_rc(pc, nresults as u8 + 1);
+                self.p.emiter().set_rc(pc, nresults + 1);
                 self.p.emiter().set_ra(pc, freereg);
 
                 self.p.pvar().reserver_regs(1);

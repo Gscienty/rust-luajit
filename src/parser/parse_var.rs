@@ -181,22 +181,7 @@ impl<'s> ParseVar<'s> {
 
                 Ok(Expr::reloc(self.p.emiter().emit_getfield(t, idx)))
             }
-            ExprValue::VarArg(pc) => {
-                self.p.emiter().set_rc(pc, 2);
-                Ok(Expr::reloc(pc))
-            }
-            ExprValue::Call(pc) => {
-                self.p.emiter().set_rc(pc, 2);
-
-                self.p
-                    .emiter()
-                    .get_code(pc)
-                    .ok_or(ParseErr::BadUsage)
-                    .and_then(|c| match c {
-                        InterCode::CALL(ra, ..) => Ok(Expr::nonreloc(ra as usize)),
-                        _ => Err(ParseErr::BadUsage),
-                    })
-            }
+            ExprValue::VarArg(..) | ExprValue::Call(..) => self.p.pexp().setonereturn(exp),
             _ => Ok(exp),
         }
         .and_then(|exp| Ok(exp.tj(tj).fj(fj)))

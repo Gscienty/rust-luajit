@@ -1,17 +1,14 @@
 use std::{cell::RefCell, rc::Rc};
 
 use crate::{
-    lexer::Lexer,
-    object::{ConstantPool, LabelDesc, Prototype, RefValue, Table, Upval, Var, VarKind},
+    lexer::{Lexer, Token},
+    match_token,
+    object::{ConstantPool, LabelDesc, Prototype, Upval, Var, VarKind},
 };
 
 use super::{Emiter, FuncState, ParseErr, ParseExpr, ParseFunc, ParseLex, ParseStmt, ParseVar};
 
 pub(crate) struct Parser {
-    gtab: RefValue,
-    pub(super) nkgc: usize,
-    pub(super) nkn: usize,
-
     pub(super) fs: FuncState,
 
     lexer: Lexer,
@@ -26,12 +23,12 @@ pub(crate) struct Parser {
 }
 
 impl Parser {
-    pub(crate) fn new(source: &str, proto: Prototype) -> Self {
+    pub(crate) fn new(
+        source: &str,
+        proto: Prototype,
+        constant_pool: Rc<RefCell<ConstantPool>>,
+    ) -> Self {
         Self {
-            gtab: Table::new(),
-            nkgc: 0,
-            nkn: 0,
-
             fs: FuncState::new(proto), // global func
             lexer: Lexer::new(source),
 
@@ -41,7 +38,7 @@ impl Parser {
 
             last_target: 0,
 
-            constant_pool: Rc::new(RefCell::new(ConstantPool::new())),
+            constant_pool,
         }
     }
 
@@ -57,26 +54,6 @@ impl Parser {
         F: FnOnce(&mut Lexer) -> U,
     {
         f(&mut self.lexer)
-    }
-
-    pub(super) fn global<U, F>(&self, f: F) -> U
-    where
-        F: FnOnce(&Table) -> U,
-    {
-        match self.gtab.table(|table| f(&table)) {
-            Some(result) => result,
-            _ => unreachable!(),
-        }
-    }
-
-    pub(super) fn global_mut<U, F>(&mut self, f: F) -> U
-    where
-        F: FnOnce(&mut Table) -> U,
-    {
-        match self.gtab.table_mut(|table| f(table)) {
-            Some(result) => result,
-            _ => unreachable!(),
-        }
     }
 
     pub(super) const ENV: &str = "nenv";
@@ -113,13 +90,23 @@ impl Parser {
 
         self.lexer.token_next()?; // read first token
 
-        self.pstmt().stmtlist()
+        self.pstmt().stmtlist()?;
+
+        match_token!(consume: self, Token::EOF)?;
+
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{object::Prototype, parser::Parser, utils::Logger};
+    use std::{cell::RefCell, rc::Rc};
+
+    use crate::{
+        object::{ConstantPool, Prototype},
+        parser::Parser,
+        utils::Logger,
+    };
 
     #[test]
     fn test_code_concat() {
@@ -182,8 +169,11 @@ mod tests {
 
                 return 1,2,3
             end
+
+            local a = 1 + 2;
             ",
             proto,
+            Rc::new(RefCell::new(ConstantPool::new())),
         );
 
         assert!(p.parse().is_ok());

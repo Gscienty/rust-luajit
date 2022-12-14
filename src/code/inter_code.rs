@@ -2,85 +2,85 @@ use std::fmt::Display;
 
 #[derive(Clone, Copy)]
 pub(crate) enum InterCode {
-    LOADNIL(u8, u8),            // rA, rB; R[rA], R[rA+1], ... , R[rA + rB] := nil
-    LOADTRUE(u8),               // rA; R[rA] := true
-    LOADFALSE(u8),              // rA; R[rA] := false
-    LFALSESKIP(u8),             // rA; R[rA] := false; pc++
-    LOADK(u8, u32),             // rA, rB; R[rA] := K[rB]; notes: maybe use LOADKX
-    LOADINT(u8, u32),           // rA, rB; R[rA] := rB
-    LOADFLOAT(u8, u32),         // rA, rB; R[rA] := rB
-    VARARG(u8, u8),             // rA, rC; R[rA], R[rA+1], ... , R[rA+rC-2] := vararg
-    JMP(Option<i32>),           // sJ; pc += sJ
-    MOVE(u8, u8),               // rA, rB; R[rA] := R[rB]
-    CONCAT(u8, u8),             // rA, rB; R[rA] := R[rA] .. ... .. R[rA + rB - 1]
-    ADDI(u8, u8, u8),           // rA, rB, rC: R[rA] := R[rB] + rC
-    ADDK(u8, u8, u8),           // rA, rB, rC; R[rA] := R[rB] + K[rC]
-    ADD(u8, u8, u8),            // rA, rB, rC; R[rA] := R[rB] + R[rC]
-    SUBK(u8, u8, u8),           // rA, rB, rC; R[rA] := R[rB] - K[rC]
-    SUB(u8, u8, u8),            // rA, rB, rC: R[rA] := R[rB] - R[rC]
-    MULK(u8, u8, u8),           // rA, rB, rC; R[rA] := R[rB] * K[rC]
-    MUL(u8, u8, u8),            // rA, rB, rC; R[rA] := R[rB] * R[rC]
-    DIVK(u8, u8, u8),           // rA, rB, rC; R[rA] := R[rB] / K[rC]
-    DIV(u8, u8, u8),            // rA, rB, rC; R[rA] := R[rB] / R[rC]
-    IDIVK(u8, u8, u8),          // rA, rB, rC; R[rA] := R[rB] // K[rC]
-    IDIV(u8, u8, u8),           // rA, rB, rC; R[rA] := R[rB] // R[rC]
-    MODK(u8, u8, u8),           // rA, rB, rC; R[rA] := R[rB] % K[rC]
-    MOD(u8, u8, u8),            // rA, rB, rC; R[rA] := R[rB] % R[rC]
-    POWK(u8, u8, u8),           // rA, rB, rC; R[rA] := R[rB] ^ K[rC]
-    POW(u8, u8, u8),            // rA, rB, rC; R[rA] := R[rB] ^ R[rC]
-    SHLI(u8, u8, u8),           // rA, rB, rC: R[rA] := R[rB] << rC
-    SHL(u8, u8, u8),            // rA, rB, rC: R[rA] := R[rB] << R[rC]
-    SHRI(u8, u8, u8),           // rA, rB, rC: R[rA] := R[rB] >> rC
-    SHR(u8, u8, u8),            // rA, rB, rC: R[rA] := R[rB] >> R[rC]
-    BANDK(u8, u8, u8),          // rA, rB, rC: R[rA] := R[rB] >> R[rC]
-    BAND(u8, u8, u8),           // rA, rB, rC: R[rA] := R[rB] >> R[rC]
-    BORK(u8, u8, u8),           // rA, rB, rC: R[rA] := R[rB] >> R[rC]
-    BOR(u8, u8, u8),            // rA, rB, rC: R[rA] := R[rB] >> R[rC]
-    BXORK(u8, u8, u8),          // rA, rB, rC: R[rA] := R[rB] >> R[rC]
-    BXOR(u8, u8, u8),           // rA, rB, rC: R[rA] := R[rB] >> R[rC]
-    EQI(u8, u32, bool),         // rA, sB, k: if (R[rA] == sB) ~= k then pc++
-    EQ(u8, u8, bool),           // rA, rB, k: if (R[rA] == R[rB]) ~= k then pc++
-    EQK(u8, u8, bool),          // rA, rB, k: if (R[rA] == K[rB]) ~= k then pc++
-    LT(u8, u8, bool),           // rA, rB, k: if (R[rA] < R[rB]) ~= k then pc++
-    LE(u8, u8, bool),           // rA, rB, k: if (R[rA] <= R[rB]) ~= k then pc++
-    LTI(u8, u32, bool),         // rA, sB, k: if (R[rA] < sB) ~= k then pc++
-    LEI(u8, u32, bool),         // rA, sB, k: if (R[rA] <= sB) ~= k then pc++
-    GTI(u8, u32, bool),         // rA, sB, k: if (R[rA] > sB) ~= k then pc++
-    GEI(u8, u32, bool),         // rA, sB, k: if (R[rA] >= sB) ~= k then pc++
-    TEST(u8, bool),             // rA, k; if (not R[rA] == k) then pc++
-    TESTSET(u8, u8, bool),      // rA, rB, k; if (not R[rA] == k) then pc++ else R[rA] := R[rB]
-    NOT(u8, u8),                // rA, rB; R[rA] := not R[rB]
-    UNM(u8, u8),                // rA, rB; R[rA] := -R[rB]
-    BNOT(u8, u8),               // rA, rB; R[rA] := ~R[rB]
-    LEN(u8, u8),                // rA, rB; R[rA] := #R[rB]
-    GETUPVAL(u8, u8),           // rA, rB; R[rA] := U[rB]
-    SETUPVAL(u8, u8),           // rA, rB; U[rB] := R[rA]
-    GETTABUP(u8, u8, u8),       // rA, rB, rC; R[rA] := U[rB][K[rC]]
-    GETI(u8, u8, u8),           // rA, rB, rC; R[rA] := U[rB][rC]
-    GETFIELD(u8, u8, u8),       // rA, rB, rC; R[rA] := R[rB][K[rC]]
-    GETTABLE(u8, u8, u8),       // rA, rB, rC; R[rA] := R[rB][R[rC]]
-    TBC(u8),                    // mark vA to be close
-    CLOSE(u8),                  // close all upvalues >= R[rA]
-    FORPREP(u8, i32),           // rA, Bx; pc += Bx + 1
-    TFORPREP(u8, i32),          // rA, Bx; R[rA + 3]; pc += Bx
-    TFORCALL(u8, u8),           // rA, rC; R[rA+4], ... , R[rA+3+rC] := R[rA](R[rA + 1], R[rA + 2])
-    FORLOOP(u8, i32),           // rA, Bx; pc -= Bx
-    TFORLOOP(u8, i32),          // rA, Bx; if R[rA+2] ~= nil then { R[rA] = R[rA+2]; pc -= Bx }
+    LOADNIL(usize, usize),         // rA, rB; R[rA], R[rA+1], ... , R[rA+rB] := nil
+    LOADTRUE(usize),               // rA; R[rA] := true
+    LOADFALSE(usize),              // rA; R[rA] := false
+    LFALSESKIP(usize),             // rA; R[rA] := false; pc++
+    LOADK(usize, usize),           // rA, rB; R[rA] := K[rB]; notes: maybe use LOADKX
+    LOADINT(usize, u32),           // rA, rB; R[rA] := rB
+    LOADFLOAT(usize, u32),         // rA, rB; R[rA] := rB
+    VARARG(usize, usize),          // rA, rC; R[rA], R[rA+1], ... , R[rA+rC-2] := vararg
+    JMP(Option<i32>),              // sJ; pc += sJ
+    MOVE(usize, usize),            // rA, rB; R[rA] := R[rB]
+    CONCAT(usize, usize),          // rA, rB; R[rA] := R[rA] .. ... .. R[rA + rB - 1]
+    ADDI(usize, usize, u8),        // rA, rB, rC: R[rA] := R[rB] + rC
+    ADDK(usize, usize, usize),     // rA, rB, rC; R[rA] := R[rB] + K[rC]
+    ADD(usize, usize, usize),      // rA, rB, rC; R[rA] := R[rB] + R[rC]
+    SUBK(usize, usize, usize),     // rA, rB, rC; R[rA] := R[rB] - K[rC]
+    SUB(usize, usize, usize),      // rA, rB, rC: R[rA] := R[rB] - R[rC]
+    MULK(usize, usize, usize),     // rA, rB, rC; R[rA] := R[rB] * K[rC]
+    MUL(usize, usize, usize),      // rA, rB, rC; R[rA] := R[rB] * R[rC]
+    DIVK(usize, usize, usize),     // rA, rB, rC; R[rA] := R[rB] / K[rC]
+    DIV(usize, usize, usize),      // rA, rB, rC; R[rA] := R[rB] / R[rC]
+    IDIVK(usize, usize, usize),    // rA, rB, rC; R[rA] := R[rB] // K[rC]
+    IDIV(usize, usize, usize),     // rA, rB, rC; R[rA] := R[rB] // R[rC]
+    MODK(usize, usize, usize),     // rA, rB, rC; R[rA] := R[rB] % K[rC]
+    MOD(usize, usize, usize),      // rA, rB, rC; R[rA] := R[rB] % R[rC]
+    POWK(usize, usize, usize),     // rA, rB, rC; R[rA] := R[rB] ^ K[rC]
+    POW(usize, usize, usize),      // rA, rB, rC; R[rA] := R[rB] ^ R[rC]
+    SHLI(usize, usize, u8),        // rA, rB, rC: R[rA] := R[rB] << rC
+    SHL(usize, usize, usize),      // rA, rB, rC: R[rA] := R[rB] << R[rC]
+    SHRI(usize, usize, u8),        // rA, rB, rC: R[rA] := R[rB] >> rC
+    SHR(usize, usize, usize),      // rA, rB, rC: R[rA] := R[rB] >> R[rC]
+    BANDK(usize, usize, usize),    // rA, rB, rC: R[rA] := R[rB] >> R[rC]
+    BAND(usize, usize, usize),     // rA, rB, rC: R[rA] := R[rB] >> R[rC]
+    BORK(usize, usize, usize),     // rA, rB, rC: R[rA] := R[rB] >> R[rC]
+    BOR(usize, usize, usize),      // rA, rB, rC: R[rA] := R[rB] >> R[rC]
+    BXORK(usize, usize, usize),    // rA, rB, rC: R[rA] := R[rB] >> R[rC]
+    BXOR(usize, usize, usize),     // rA, rB, rC: R[rA] := R[rB] >> R[rC]
+    EQI(usize, u32, bool),         // rA, sB, k: if (R[rA] == sB) ~= k then pc++
+    EQ(usize, usize, bool),        // rA, rB, k: if (R[rA] == R[rB]) ~= k then pc++
+    EQK(usize, usize, bool),       // rA, rB, k: if (R[rA] == K[rB]) ~= k then pc++
+    LT(usize, usize, bool),        // rA, rB, k: if (R[rA] < R[rB]) ~= k then pc++
+    LE(usize, usize, bool),        // rA, rB, k: if (R[rA] <= R[rB]) ~= k then pc++
+    LTI(usize, u32, bool),         // rA, sB, k: if (R[rA] < sB) ~= k then pc++
+    LEI(usize, u32, bool),         // rA, sB, k: if (R[rA] <= sB) ~= k then pc++
+    GTI(usize, u32, bool),         // rA, sB, k: if (R[rA] > sB) ~= k then pc++
+    GEI(usize, u32, bool),         // rA, sB, k: if (R[rA] >= sB) ~= k then pc++
+    TEST(usize, bool),             // rA, k; if (not R[rA] == k) then pc++
+    TESTSET(usize, usize, bool),   // rA, rB, k; if (not R[rA] == k) then pc++ else R[rA] := R[rB]
+    NOT(usize, usize),             // rA, rB; R[rA] := not R[rB]
+    UNM(usize, usize),             // rA, rB; R[rA] := -R[rB]
+    BNOT(usize, usize),            // rA, rB; R[rA] := ~R[rB]
+    LEN(usize, usize),             // rA, rB; R[rA] := #R[rB]
+    GETUPVAL(u8, u8),              // rA, rB; R[rA] := U[rB]
+    SETUPVAL(u8, u8),              // rA, rB; U[rB] := R[rA]
+    GETTABUP(u8, u8, u8),          // rA, rB, rC; R[rA] := U[rB][K[rC]]
+    GETI(u8, u8, u8),              // rA, rB, rC; R[rA] := U[rB][rC]
+    GETFIELD(u8, u8, u8),          // rA, rB, rC; R[rA] := R[rB][K[rC]]
+    GETTABLE(u8, u8, u8),          // rA, rB, rC; R[rA] := R[rB][R[rC]]
+    TBC(u8),                       // mark vA to be close
+    CLOSE(u8),                     // close all upvalues >= R[rA]
+    FORPREP(u8, i32),              // rA, Bx; pc += Bx + 1
+    TFORPREP(u8, i32),             // rA, Bx; R[rA + 3]; pc += Bx
+    TFORCALL(u8, u8), // rA, rC; R[rA+4], ... , R[rA+3+rC] := R[rA](R[rA + 1], R[rA + 2])
+    FORLOOP(u8, i32), // rA, Bx; pc -= Bx
+    TFORLOOP(u8, i32), // rA, Bx; if R[rA+2] ~= nil then { R[rA] = R[rA+2]; pc -= Bx }
     SETTABUP(u8, u8, u8, bool), // rA, rB, rC, k; U[rA][K[rB]] := RK[rC]
-    SETI(u8, u8, u8, bool),     // rA, rB, rC, k; R[rA][rB] := RK[rC]
+    SETI(u8, u8, u8, bool), // rA, rB, rC, k; R[rA][rB] := RK[rC]
     SETFIELD(u8, u8, u8, bool), // rA, rB, rC, k; R[rA][K[rB]] := RK[rC]
     SETTABLE(u8, u8, u8, bool), // rA, rB, rC, k; R[rA][R[rB]] := RK[rC]
-    RETURN(u8, u8),             // rA, rB; return R[rA], ... , R[rA+rB-2]
-    RETURN0,                    // ; return
-    RETURN1(u8),                // rA; return R[rA]
-    CLOSURE(u8, u32),           // rA, Bx; R[rA] = closure(KPROTO[Bx])
-    VARARGPREP(u8),             // adjust vararg parameters
-    CALL(u8, u8, u8), // rA, rB, rC; R[rA], ... , R[rA+rC-2] := R[rA](R[rA+1], ... , R[rA+rB-1])
-    TAILCALL(u8, u8, u8), // rA, rB, rC; R[rA], ... , R[rA+rC-2] := R[rA](R[rA+1], ... , R[rA+rB-1])
-    NEWTABLE(u8, u8, u8, bool), // rA; R[rA] = {}
+    RETURN(u8, u8),   // rA, rB; return R[rA], ... , R[rA+rB-2]
+    RETURN0,          // ; return
+    RETURN1(u8),      // rA; return R[rA]
+    CLOSURE(u8, u32), // rA, Bx; R[rA] = closure(KPROTO[Bx])
+    VARARGPREP(u8),   // adjust vararg parameters
+    CALL(usize, usize, usize), // rA, rB, rC; R[rA], ... , R[rA+rC-2] := R[rA](R[rA+1], ... , R[rA+rB-1])
+    TAILCALL(usize, usize, usize), // rA, rB, rC; R[rA], ... , R[rA+rC-2] := R[rA](R[rA+1], ... , R[rA+rB-1])
+    NEWTABLE(u8, u8, u8, bool),    // rA; R[rA] = {}
     NOP,
     SETLIST(u8, u8, u8, bool), // rA, rB, rC; R[rA][rC+i] := R[rA+i], 1 <= i <= rB
-    SELF(u8, u8, u8, bool),    // rA, rB, rC; R[rA+1]; R[rB]; R[rA] = R[rB][RK[rC]]
+    SELF(u8, u8, u8, bool),    // rA, rB, rC; R[rA+1] := R[rB]; R[rA] = R[rB][RK[rC]]
 }
 
 impl Display for InterCode {

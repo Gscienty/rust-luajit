@@ -1,5 +1,6 @@
 use std::{
     cell::{Ref, RefCell, RefMut},
+    fmt::Display,
     ops::{Deref, DerefMut},
     rc::Rc,
 };
@@ -19,6 +20,19 @@ pub enum Value {
 
 #[derive(Clone, PartialEq)]
 pub struct RefValue(pub(crate) Rc<RefCell<Value>>);
+
+impl Display for RefValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.get().deref() {
+            Value::Integer(v) => write!(f, "i({})", v),
+            Value::Number(v) => write!(f, "f({})", v),
+            Value::Boolean(v) => write!(f, "b({})", v),
+            Value::String(v) => write!(f, "s({})", v),
+            Value::Table(_v) => write!(f, "t"),
+            Value::Nil => write!(f, "NIL"),
+        }
+    }
+}
 
 impl RefValue {
     pub fn new() -> Self {

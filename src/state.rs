@@ -1,18 +1,26 @@
-use crate::{errors::LuaError, object::Prototype, parser::Parser};
+use std::{cell::RefCell, rc::Rc};
+
+use crate::{
+    errors::LuaError,
+    object::{ConstantPool, Prototype},
+    parser::Parser,
+};
 
 pub struct LuaState {
     proto: Prototype,
+    pub(crate) constant_pool: Rc<RefCell<ConstantPool>>,
 }
 
 impl LuaState {
     pub fn new() -> Self {
         Self {
             proto: Prototype::new(),
+            constant_pool: Rc::new(RefCell::new(ConstantPool::new())),
         }
     }
 
-    pub fn parse(&self, source: &str) -> Result<(), LuaError> {
-        Parser::new(source, self.proto.clone())
+    pub fn parse(&mut self, source: &str) -> Result<(), LuaError> {
+        Parser::new(source, self.proto.clone(), self.constant_pool.clone())
             .parse()
             .or(Err(LuaError::ParseError))
     }
@@ -20,7 +28,7 @@ impl LuaState {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::Logger;
+    use crate::{object::VMContext, utils::Logger, vm::VMExec};
 
     use super::*;
 
@@ -29,17 +37,15 @@ mod tests {
         log::set_logger(&Logger {}).unwrap();
         log::set_max_level(log::LevelFilter::Debug);
 
-        let state = LuaState::new();
-
+        let mut state = LuaState::new();
         let ret = state.parse(
             "
-            function add(a, b)
-                return a + b + 1;
-            end
-
-            function sub(a, b)
-                local map = { ['key'] = 'value'};
-                return add(a, b);
+            local a = 'hello world';
+            local b = 10;
+            if #a == 11 then
+                b = b + 5;
+            else 
+                b = b + 10;
             end
         ",
         );
@@ -54,6 +60,28 @@ mod tests {
 
                 println!("{}\t{}", ci, c);
             }
+        }
+
+        let mut ctx = &mut VMContext::new();
+
+        loop {
+            println!("pc: {}", ctx.pc);
+
+            if let Some(code) = state.proto.prop().codes.get(ctx.pc) {
+                if VMExec::new(&state, &mut ctx).exec(code).is_err() {
+                    println!("occur err");
+                    break;
+                }
+            } else {
+                break;
+            };
+
+            let mut off = 0;
+            for reg in ctx.reg.iter() {
+                println!("reg #{}: {}", off, reg);
+                off += 1;
+            }
+            println!("pc: {}", ctx.pc);
         }
     }
 }

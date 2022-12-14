@@ -1,9 +1,23 @@
+use std::fmt::Display;
+
 pub(crate) enum ConstantValue {
     Float(f64),
     Integer(i64),
     String(String),
     Bool(bool),
     Nil,
+}
+
+impl Display for ConstantValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConstantValue::Float(v) => write!(f, "f({})", v),
+            ConstantValue::Integer(v) => write!(f, "i({})", v),
+            ConstantValue::String(v) => write!(f, "s({})", v),
+            ConstantValue::Bool(v) => write!(f, "b({})", v),
+            ConstantValue::Nil => write!(f, "NIL"),
+        }
+    }
 }
 
 pub(crate) struct ConstantPool {
