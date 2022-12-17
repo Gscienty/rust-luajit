@@ -1,3 +1,3 @@
-pub(crate) enum ExecError {
+pub enum ExecError {
     BadOperand,
 }

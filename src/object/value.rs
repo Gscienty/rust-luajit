@@ -5,7 +5,7 @@ use std::{
     rc::Rc,
 };
 
-use super::Table;
+use super::{Prototype, Table};
 
 #[derive(Clone, PartialEq)]
 pub enum Value {
@@ -14,6 +14,7 @@ pub enum Value {
     Boolean(bool),
     String(String),
     Table(Table),
+    Closure(Prototype),
 
     Nil,
 }
@@ -29,6 +30,7 @@ impl Display for RefValue {
             Value::Boolean(v) => write!(f, "b({})", v),
             Value::String(v) => write!(f, "s({})", v),
             Value::Table(_v) => write!(f, "t"),
+            Value::Closure(_) => write!(f, "c"),
             Value::Nil => write!(f, "NIL"),
         }
     }
@@ -138,5 +140,11 @@ impl From<bool> for RefValue {
 impl From<&str> for RefValue {
     fn from(value: &str) -> Self {
         RefValue(Rc::new(RefCell::new(Value::String(String::from(value)))))
+    }
+}
+
+impl From<Prototype> for RefValue {
+    fn from(value: Prototype) -> Self {
+        RefValue(Rc::new(RefCell::new(Value::Closure(value))))
     }
 }

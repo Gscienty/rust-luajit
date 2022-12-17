@@ -1,4 +1,3 @@
-mod call;
 mod constant_pool;
 mod expr;
 mod label;
@@ -11,7 +10,6 @@ mod value;
 mod variable;
 mod vmcontext;
 
-pub(crate) use call::*;
 pub(crate) use constant_pool::*;
 pub(crate) use expr::*;
 pub(crate) use label::*;

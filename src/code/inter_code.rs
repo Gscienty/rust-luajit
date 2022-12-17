@@ -53,11 +53,11 @@ pub(crate) enum InterCode {
     UNM(usize, usize),             // rA, rB; R[rA] := -R[rB]
     BNOT(usize, usize),            // rA, rB; R[rA] := ~R[rB]
     LEN(usize, usize),             // rA, rB; R[rA] := #R[rB]
-    GETUPVAL(u8, u8),              // rA, rB; R[rA] := U[rB]
-    SETUPVAL(u8, u8),              // rA, rB; U[rB] := R[rA]
+    GETUPVAL(usize, usize),        // rA, rB; R[rA] := U[rB]
+    SETUPVAL(usize, usize),        // rA, rB; U[rB] := R[rA]
     GETTABUP(u8, u8, u8),          // rA, rB, rC; R[rA] := U[rB][K[rC]]
     GETI(u8, u8, u8),              // rA, rB, rC; R[rA] := U[rB][rC]
-    GETFIELD(u8, u8, u8),          // rA, rB, rC; R[rA] := R[rB][K[rC]]
+    GETFIELD(usize, usize, usize), // rA, rB, rC; R[rA] := R[rB][K[rC]]
     GETTABLE(u8, u8, u8),          // rA, rB, rC; R[rA] := R[rB][R[rC]]
     TBC(u8),                       // mark vA to be close
     CLOSE(u8),                     // close all upvalues >= R[rA]
@@ -68,12 +68,12 @@ pub(crate) enum InterCode {
     TFORLOOP(u8, i32), // rA, Bx; if R[rA+2] ~= nil then { R[rA] = R[rA+2]; pc -= Bx }
     SETTABUP(u8, u8, u8, bool), // rA, rB, rC, k; U[rA][K[rB]] := RK[rC]
     SETI(u8, u8, u8, bool), // rA, rB, rC, k; R[rA][rB] := RK[rC]
-    SETFIELD(u8, u8, u8, bool), // rA, rB, rC, k; R[rA][K[rB]] := RK[rC]
-    SETTABLE(u8, u8, u8, bool), // rA, rB, rC, k; R[rA][R[rB]] := RK[rC]
-    RETURN(u8, u8),   // rA, rB; return R[rA], ... , R[rA+rB-2]
+    SETFIELD(usize, usize, usize, bool), // rA, rB, rC, k; R[rA][K[rB]] := RK[rC]
+    SETTABLE(usize, usize, usize, bool), // rA, rB, rC, k; R[rA][R[rB]] := RK[rC]
+    RETURN(usize, usize), // rA, rB; return R[rA], ... , R[rA+rB-2]
     RETURN0,          // ; return
-    RETURN1(u8),      // rA; return R[rA]
-    CLOSURE(u8, u32), // rA, Bx; R[rA] = closure(KPROTO[Bx])
+    RETURN1(usize),   // rA; return R[rA]
+    CLOSURE(usize, usize), // rA, Bx; R[rA] = closure(KPROTO[Bx])
     VARARGPREP(u8),   // adjust vararg parameters
     CALL(usize, usize, usize), // rA, rB, rC; R[rA], ... , R[rA+rC-2] := R[rA](R[rA+1], ... , R[rA+rB-1])
     TAILCALL(usize, usize, usize), // rA, rB, rC; R[rA], ... , R[rA+rC-2] := R[rA](R[rA+1], ... , R[rA+rB-1])

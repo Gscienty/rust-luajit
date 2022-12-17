@@ -86,6 +86,7 @@ impl Parser {
         let mut envupv = Upval::new(Parser::ENV);
         envupv.instack = true;
         envupv.kind = VarKind::REG;
+        envupv.idx = 0;
         self.pvar().pushupval(envupv);
 
         self.lexer.token_next()?; // read first token

@@ -239,7 +239,7 @@ impl<'s> Emiter<'s> {
     }
 
     pub(super) fn emit_getupval(&mut self, rb: usize) -> usize {
-        self.emit(InterCode::GETUPVAL(255, rb as u8))
+        self.emit(InterCode::GETUPVAL(255, rb))
     }
 
     pub(super) fn emit_gettabup(&mut self, rb: usize, rc: usize) -> usize {
@@ -251,7 +251,7 @@ impl<'s> Emiter<'s> {
     }
 
     pub(super) fn emit_getfield(&mut self, rb: usize, rc: usize) -> usize {
-        self.emit(InterCode::GETFIELD(255, rb as u8, rc as u8))
+        self.emit(InterCode::GETFIELD(255, rb, rc))
     }
 
     pub(super) fn emit_gettable(&mut self, rb: usize, rc: usize) -> usize {
@@ -287,7 +287,7 @@ impl<'s> Emiter<'s> {
     }
 
     pub(super) fn emit_setupval(&mut self, ra: usize, rb: usize) -> usize {
-        self.emit(InterCode::SETUPVAL(ra as u8, rb as u8))
+        self.emit(InterCode::SETUPVAL(ra, rb))
     }
 
     pub(super) fn emit_settabup(&mut self, ra: usize, rb: usize, rc: usize, k: bool) -> usize {
@@ -295,7 +295,7 @@ impl<'s> Emiter<'s> {
     }
 
     pub(super) fn emit_settable(&mut self, ra: usize, rb: usize, rc: usize, k: bool) -> usize {
-        self.emit(InterCode::SETTABLE(ra as u8, rb as u8, rc as u8, k))
+        self.emit(InterCode::SETTABLE(ra, rb, rc, k))
     }
 
     pub(super) fn emit_seti(&mut self, ra: usize, rb: i64, rc: usize, k: bool) -> usize {
@@ -303,15 +303,15 @@ impl<'s> Emiter<'s> {
     }
 
     pub(super) fn emit_setfield(&mut self, ra: usize, rb: usize, rc: usize, k: bool) -> usize {
-        self.emit(InterCode::SETFIELD(ra as u8, rb as u8, rc as u8, k))
+        self.emit(InterCode::SETFIELD(ra, rb, rc, k))
     }
 
     pub(super) fn emit_return(&mut self, ra: usize, rb: usize) -> usize {
-        self.emit(InterCode::RETURN(ra as u8, rb as u8))
+        self.emit(InterCode::RETURN(ra, rb))
     }
 
     pub(super) fn emit_return1(&mut self, ra: usize) -> usize {
-        self.emit(InterCode::RETURN1(ra as u8))
+        self.emit(InterCode::RETURN1(ra))
     }
 
     pub(super) fn emit_return0(&mut self) -> usize {
@@ -339,7 +339,7 @@ impl<'s> Emiter<'s> {
     }
 
     pub(super) fn emit_closure(&mut self, rb: usize) -> Result<usize, ParseErr> {
-        self.prevemit(InterCode::CLOSURE(255, rb as u32))
+        self.prevemit(InterCode::CLOSURE(255, rb))
     }
 
     pub(super) fn set_ra(&mut self, pc: usize, ra: usize) {
@@ -378,13 +378,13 @@ impl<'s> Emiter<'s> {
                 InterCode::UNM(_, rb) => InterCode::UNM(ra, rb),
                 InterCode::BNOT(_, rb) => InterCode::BNOT(ra, rb),
                 InterCode::LEN(_, rb) => InterCode::LEN(ra, rb),
-                InterCode::GETUPVAL(_, rb) => InterCode::GETUPVAL(ra as u8, rb),
+                InterCode::GETUPVAL(_, rb) => InterCode::GETUPVAL(ra, rb),
                 InterCode::GETTABUP(_, rb, rc) => InterCode::GETTABUP(ra as u8, rb, rc),
                 InterCode::GETI(_, rb, rc) => InterCode::GETI(ra as u8, rb, rc),
-                InterCode::GETFIELD(_, rb, rc) => InterCode::GETFIELD(ra as u8, rb, rc),
+                InterCode::GETFIELD(_, rb, rc) => InterCode::GETFIELD(ra, rb, rc),
                 InterCode::GETTABLE(_, rb, rc) => InterCode::GETTABLE(ra as u8, rb, rc),
                 InterCode::VARARG(_, rb) => InterCode::VARARG(ra, rb),
-                InterCode::CLOSURE(_, rb) => InterCode::CLOSURE(ra as u8, rb),
+                InterCode::CLOSURE(_, rb) => InterCode::CLOSURE(ra, rb),
                 _ => *c,
             };
 

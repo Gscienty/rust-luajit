@@ -4,10 +4,11 @@ use crate::{
     errors::LuaError,
     object::{ConstantPool, Prototype},
     parser::Parser,
+    vm::{ExecError, VMExec},
 };
 
 pub struct LuaState {
-    proto: Prototype,
+    pub(crate) proto: Prototype,
     pub(crate) constant_pool: Rc<RefCell<ConstantPool>>,
 }
 
@@ -24,11 +25,17 @@ impl LuaState {
             .parse()
             .or(Err(LuaError::ParseError))
     }
+
+    pub fn exec(&self) -> Result<(), ExecError> {
+        let mut exec = VMExec::new(self);
+
+        exec.exec()
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{object::VMContext, utils::Logger, vm::VMExec};
+    use crate::utils::Logger;
 
     use super::*;
 
@@ -40,12 +47,20 @@ mod tests {
         let mut state = LuaState::new();
         let ret = state.parse(
             "
+            function add(a, b)
+                return a + b;
+            end
+
+            function sub(a, b)
+                return add(a - b, a + b) - a - b;
+            end
+
             local a = 'hello world';
             local b = 10;
             if #a == 11 then
-                b = b + 5;
+                b = add(b, 2) + 100;
             else 
-                b = b + 10;
+                b = sub(b, 3) + 100;
             end
         ",
         );
@@ -56,32 +71,11 @@ mod tests {
             println!("#######################");
             let mut ci = 0;
             for c in &proto.prop().codes {
-                ci += 1;
-
                 println!("{}\t{}", ci, c);
+                ci += 1;
             }
         }
 
-        let mut ctx = &mut VMContext::new();
-
-        loop {
-            println!("pc: {}", ctx.pc);
-
-            if let Some(code) = state.proto.prop().codes.get(ctx.pc) {
-                if VMExec::new(&state, &mut ctx).exec(code).is_err() {
-                    println!("occur err");
-                    break;
-                }
-            } else {
-                break;
-            };
-
-            let mut off = 0;
-            for reg in ctx.reg.iter() {
-                println!("reg #{}: {}", off, reg);
-                off += 1;
-            }
-            println!("pc: {}", ctx.pc);
-        }
+        _ = state.exec();
     }
 }

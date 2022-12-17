@@ -1,9 +1,9 @@
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 
 use crate::{
     code::InterCode,
     lexer::{Lexer, Token},
-    object::{ConstantValue, RefValue, VMContext, Value},
+    object::{CallFunc, CallInfo, ConstantValue, RefValue, VMContext, Value},
     state::LuaState,
 };
 
@@ -32,15 +32,40 @@ enum VMExecOperator {
 
 pub(crate) struct VMExec<'s> {
     state: &'s LuaState,
-    ctx: &'s mut VMContext,
+    ctx: VMContext,
 }
 
 impl<'s> VMExec<'s> {
-    pub(crate) fn new(state: &'s LuaState, ctx: &'s mut VMContext) -> Self {
-        Self { state, ctx }
+    pub(crate) fn new(state: &'s LuaState) -> Self {
+        let callinfo = CallInfo::new_luacall(1, state.proto.clone());
+        Self {
+            state,
+            ctx: VMContext::new(callinfo),
+        }
     }
 
-    pub(crate) fn exec(&mut self, code: &InterCode) -> Result<(), ExecError> {
+    pub(crate) fn exec(&mut self) -> Result<(), ExecError> {
+        loop {
+            let func = self.ctx.callinfo.prop().func.clone();
+
+            match func {
+                CallFunc::LuaFunc(prop) => {
+                    let pc = self.ctx.callinfo.prop().pc;
+
+                    log::debug!("pre exec pc: {}", pc);
+
+                    if let Some(code) = prop.prop().codes.get(pc) {
+                        self.exec_code(code)?;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn exec_code(&mut self, code: &InterCode) -> Result<(), ExecError> {
         log::debug!("exec code: {}", code);
 
         match *code {
@@ -89,9 +114,40 @@ impl<'s> VMExec<'s> {
             InterCode::UNM(ra, rb) => self.exec_unm(ra, rb)?,
             InterCode::BNOT(ra, rb) => self.exec_bnot(ra, rb)?,
             InterCode::LEN(ra, rb) => self.exec_len(ra, rb)?,
+            InterCode::GETUPVAL(ra, rb) => self.exec_getupval(ra, rb)?,
+            InterCode::SETUPVAL(ra, rb) => self.exec_setupval(ra, rb)?,
+            InterCode::CLOSURE(ra, rb) => self.exec_closure(ra, rb)?,
+            InterCode::SETFIELD(ra, rb, rc, iskey) => self.exec_setfield(ra, rb, rc, iskey)?,
+            InterCode::GETFIELD(ra, rb, rc) => self.exec_getfield(ra, rb, rc)?,
+            InterCode::CALL(ra, rb, rc) => {
+                self.exec_call(ra, rb, rc)?;
+
+                if log::Level::Debug <= log::max_level() {
+                    log::debug!("pc: {}", self.ctx.callinfo.prop().pc);
+                    log::debug!("regbase: {}", self.ctx.callinfo.prop().regbase);
+                    let mut ridx = 0;
+                    for reg in self.ctx.reg.iter() {
+                        log::debug!("r#{}, ({})", ridx, reg);
+                        ridx += 1;
+                    }
+                }
+                return Ok(());
+            }
+            InterCode::RETURN1(ra) => {
+                self.exec_return1(ra)?;
+            }
             _ => {}
         }
-        self.ctx.pc += 1;
+        self.ctx.callinfo.prop_mut().pc += 1;
+
+        if log::Level::Debug <= log::max_level() {
+            log::debug!("pc: {}", self.ctx.callinfo.prop().pc);
+            let mut ridx = 0;
+            for reg in self.ctx.reg.iter() {
+                log::debug!("r#{}, ({})", ridx, reg);
+                ridx += 1;
+            }
+        }
 
         Ok(())
     }
@@ -108,7 +164,7 @@ impl<'s> VMExec<'s> {
 
     fn exec_lfalseskip(&mut self, ra: usize) {
         self.ctx.set(ra, RefValue::from(false));
-        self.ctx.pc += 1;
+        self.ctx.callinfo.prop_mut().pc += 1;
     }
 
     fn exec_loadk(&mut self, ra: usize, rb: usize) {
@@ -136,9 +192,9 @@ impl<'s> VMExec<'s> {
     fn exec_jmp(&mut self, offset: Option<i32>) {
         if let Some(offset) = offset {
             if offset < 0 {
-                self.ctx.pc -= offset.abs() as usize;
+                self.ctx.callinfo.prop_mut().pc -= offset.abs() as usize;
             } else {
-                self.ctx.pc += offset.abs() as usize;
+                self.ctx.callinfo.prop_mut().pc += offset.abs() as usize;
             }
         }
     }
@@ -771,7 +827,7 @@ impl<'s> VMExec<'s> {
 
         let result = self.refvalue_op(op, a, b)?;
         if matches!(result.get().deref(), Value::Boolean(false)) {
-            self.ctx.pc += 1;
+            self.ctx.callinfo.prop_mut().pc += 1;
         }
         Ok(())
     }
@@ -787,7 +843,7 @@ impl<'s> VMExec<'s> {
 
         let result = self.refvalue_op(op, a, b)?;
         if matches!(result.get().deref(), Value::Boolean(false)) {
-            self.ctx.pc += 1;
+            self.ctx.callinfo.prop_mut().pc += 1;
         }
         Ok(())
     }
@@ -803,7 +859,7 @@ impl<'s> VMExec<'s> {
 
         let result = self.refvalue_op(op, a, b)?;
         if matches!(result.get().deref(), Value::Boolean(false)) {
-            self.ctx.pc += 1;
+            self.ctx.callinfo.prop_mut().pc += 1;
         }
         Ok(())
     }
@@ -819,7 +875,7 @@ impl<'s> VMExec<'s> {
 
         let result = self.refvalue_op(op, a, b)?;
         if matches!(result.get().deref(), Value::Boolean(false)) {
-            self.ctx.pc += 1;
+            self.ctx.callinfo.prop_mut().pc += 1;
         }
         Ok(())
     }
@@ -835,7 +891,7 @@ impl<'s> VMExec<'s> {
 
         let result = self.refvalue_op(op, a, b)?;
         if matches!(result.get().deref(), Value::Boolean(false)) {
-            self.ctx.pc += 1;
+            self.ctx.callinfo.prop_mut().pc += 1;
         }
         Ok(())
     }
@@ -846,7 +902,7 @@ impl<'s> VMExec<'s> {
 
         let result = self.refvalue_op(VMExecOperator::LT, a, b)?;
         if matches!(result.get().deref(), Value::Boolean(result) if *result != k) {
-            self.ctx.pc += 1;
+            self.ctx.callinfo.prop_mut().pc += 1;
         }
         Ok(())
     }
@@ -857,7 +913,7 @@ impl<'s> VMExec<'s> {
 
         let result = self.refvalue_op(VMExecOperator::LE, a, b)?;
         if matches!(result.get().deref(), Value::Boolean(result) if *result != k) {
-            self.ctx.pc += 1;
+            self.ctx.callinfo.prop_mut().pc += 1;
         }
         Ok(())
     }
@@ -868,7 +924,7 @@ impl<'s> VMExec<'s> {
 
         let result = self.refvalue_op(VMExecOperator::GT, a, b)?;
         if matches!(result.get().deref(), Value::Boolean(result) if *result != k) {
-            self.ctx.pc += 1;
+            self.ctx.callinfo.prop_mut().pc += 1;
         }
         Ok(())
     }
@@ -879,7 +935,7 @@ impl<'s> VMExec<'s> {
 
         let result = self.refvalue_op(VMExecOperator::GE, a, b)?;
         if matches!(result.get().deref(), Value::Boolean(result) if *result != k) {
-            self.ctx.pc += 1;
+            self.ctx.callinfo.prop_mut().pc += 1;
         }
         Ok(())
     }
@@ -898,7 +954,7 @@ impl<'s> VMExec<'s> {
         };
 
         if cond {
-            self.ctx.pc += 1;
+            self.ctx.callinfo.prop_mut().pc += 1;
         }
 
         Ok(())
@@ -918,7 +974,7 @@ impl<'s> VMExec<'s> {
         };
 
         if cond {
-            self.ctx.pc += 1;
+            self.ctx.callinfo.prop_mut().pc += 1;
         } else {
             let value = self.ctx.get(rb);
             self.ctx.set(ra, value)
@@ -939,6 +995,7 @@ impl<'s> VMExec<'s> {
             Value::String(v) => RefValue::from(v.len() == 0),
             Value::Boolean(v) => RefValue::from(!*v),
             Value::Table(..) => RefValue::from(false),
+            Value::Closure(..) => RefValue::from(false),
         };
 
         self.ctx.set(ra, value);
@@ -958,6 +1015,7 @@ impl<'s> VMExec<'s> {
             Value::Number(v) => RefValue::from(-*v),
             Value::Boolean(v) => RefValue::from(!*v),
             Value::Table(..) => RefValue::from(0),
+            Value::Closure(..) => RefValue::from(0),
         };
 
         Ok(value)
@@ -982,6 +1040,7 @@ impl<'s> VMExec<'s> {
             Value::String(v) => RefValue::from(v.len() as i64),
             Value::Boolean(..) => RefValue::from(0),
             Value::Table(..) => RefValue::from(0),
+            Value::Closure(..) => RefValue::from(0),
         };
 
         self.ctx.set(ra, value);
@@ -1001,6 +1060,7 @@ impl<'s> VMExec<'s> {
             }
             Value::Boolean(v) => RefValue::from(!*v),
             Value::Table(..) => RefValue::from(false),
+            Value::Closure(..) => RefValue::from(false),
         };
 
         Ok(value)
@@ -1011,6 +1071,109 @@ impl<'s> VMExec<'s> {
 
         let value = self.refvalue_bnot(b)?;
         self.ctx.set(ra, value);
+        Ok(())
+    }
+
+    fn exec_getupval(&mut self, ra: usize, rb: usize) -> Result<(), ExecError> {
+        if let Some(b) = self.state.proto.prop().upvars.get(rb) {
+            let value = self.ctx.get_abs(b.idx);
+            self.ctx.set(ra, value);
+        } else {
+            self.ctx.set(ra, RefValue::new());
+        }
+
+        Ok(())
+    }
+
+    fn exec_setupval(&mut self, ra: usize, rb: usize) -> Result<(), ExecError> {
+        if let Some(b) = self.state.proto.prop().upvars.get(rb) {
+            let value = self.ctx.get(ra);
+            self.ctx.set_abs(b.idx, value);
+
+            Ok(())
+        } else {
+            Err(ExecError::BadOperand)
+        }
+    }
+
+    fn exec_closure(&mut self, ra: usize, rb: usize) -> Result<(), ExecError> {
+        let closure = match &self.ctx.callinfo.prop().func {
+            CallFunc::LuaFunc(proto) => {
+                if let Some(p) = proto.prop().children_proto.get(rb) {
+                    RefValue::from(p.clone())
+                } else {
+                    return Err(ExecError::BadOperand);
+                }
+            }
+        };
+
+        self.ctx.set(ra, closure);
+
+        Ok(())
+    }
+
+    fn exec_setfield(
+        &mut self,
+        ra: usize,
+        rb: usize,
+        rc: usize,
+        iskey: bool,
+    ) -> Result<(), ExecError> {
+        let key = self.ktorefvalue(rb);
+        let value = if iskey {
+            self.ktorefvalue(rc)
+        } else {
+            self.ctx.get(rc)
+        };
+
+        match self.ctx.get(ra).get_mut().deref_mut() {
+            Value::Table(table) => table.set(key, value),
+            _ => return Err(ExecError::BadOperand),
+        };
+
+        Ok(())
+    }
+
+    fn exec_getfield(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
+        let key = self.ktorefvalue(rc);
+        let value = match self.ctx.get(rb).get().deref() {
+            Value::Table(table) => table.get(key.get()),
+            _ => return Err(ExecError::BadOperand),
+        };
+
+        if let Some(value) = value {
+            self.ctx.set(ra, value)
+        } else {
+            self.ctx.set(ra, RefValue::new())
+        }
+
+        Ok(())
+    }
+
+    fn exec_call(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
+        let closure = match self.ctx.get(ra).get().deref() {
+            Value::Closure(proto) => proto.clone(),
+            _ => return Err(ExecError::BadOperand),
+        };
+
+        let ci = CallInfo::new_luacall(self.ctx.reg.len() - rb + 1, closure);
+        ci.prop_mut().prev = Some(self.ctx.callinfo.clone());
+        ci.prop_mut().nresults = rc - 1;
+
+        self.ctx.callinfo = ci;
+
+        Ok(())
+    }
+
+    fn exec_return1(&mut self, ra: usize) -> Result<(), ExecError> {
+        let value = self.ctx.get(ra);
+        let regidx = self.ctx.callinfo.prop().regbase - 1;
+        self.ctx.set_abs(regidx, value);
+
+        let prev = self.ctx.callinfo.prop().prev.clone();
+        if let Some(prev) = prev {
+            self.ctx.callinfo = prev;
+        }
         Ok(())
     }
 }

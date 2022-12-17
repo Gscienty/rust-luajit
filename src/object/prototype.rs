@@ -20,7 +20,7 @@ pub(crate) struct PrototypeContent {
 }
 
 #[derive(Clone)]
-pub(crate) struct Prototype(Rc<RefCell<PrototypeContent>>);
+pub struct Prototype(Rc<RefCell<PrototypeContent>>);
 
 impl Prototype {
     pub(crate) fn new() -> Self {
@@ -48,5 +48,11 @@ impl Prototype {
 
     pub(crate) fn prop_mut(&self) -> RefMut<PrototypeContent> {
         self.0.as_ref().borrow_mut()
+    }
+}
+
+impl PartialEq for Prototype {
+    fn eq(&self, _: &Self) -> bool {
+        false
     }
 }
