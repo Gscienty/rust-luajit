@@ -179,7 +179,7 @@ impl<'s> ParseVar<'s> {
                     self.free_reg(idx)?;
                 }
 
-                Ok(Expr::reloc(self.p.emiter().emit_getfield(t, idx)))
+                Ok(Expr::reloc(self.p.emiter().emit_gettable(t, idx)))
             }
             ExprValue::VarArg(..) | ExprValue::Call(..) => self.p.pexp().setonereturn(exp),
             _ => Ok(exp),
@@ -686,7 +686,15 @@ impl<'s> ParseVar<'s> {
     }
 
     pub(super) fn indexed(&mut self, tab: Expr, key: Expr) -> Result<Expr, ParseErr> {
-        let key = if matches!(key.value, ExprValue::String(..)) {
+        log::debug!("parse indexed, tab: {}, key: {}", tab.value, key.value);
+
+        let key = if matches!(
+            key.value,
+            ExprValue::String(..)
+                | ExprValue::Integer(..)
+                | ExprValue::Float(..)
+                | ExprValue::Bool(..)
+        ) {
             self.p.pvar().exp_tok(key)?
         } else {
             key
@@ -701,6 +709,7 @@ impl<'s> ParseVar<'s> {
         };
 
         let exp = if let ExprValue::Upval(reg) = tab.value {
+            log::debug!("here, key: {}", key.value);
             let ikey = if let ExprValue::K(kidx) = key.value {
                 kidx
             } else {

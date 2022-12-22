@@ -55,19 +55,19 @@ pub(crate) enum InterCode {
     LEN(usize, usize),             // rA, rB; R[rA] := #R[rB]
     GETUPVAL(usize, usize),        // rA, rB; R[rA] := U[rB]
     SETUPVAL(usize, usize),        // rA, rB; U[rB] := R[rA]
-    GETTABUP(u8, u8, u8),          // rA, rB, rC; R[rA] := U[rB][K[rC]]
-    GETI(u8, u8, u8),              // rA, rB, rC; R[rA] := U[rB][rC]
+    GETTABUP(usize, usize, usize), // rA, rB, rC; R[rA] := U[rB][K[rC]]
+    GETI(usize, usize, i64),       // rA, rB, rC; R[rA] := R[rB][rC]
     GETFIELD(usize, usize, usize), // rA, rB, rC; R[rA] := R[rB][K[rC]]
-    GETTABLE(u8, u8, u8),          // rA, rB, rC; R[rA] := R[rB][R[rC]]
+    GETTABLE(usize, usize, usize), // rA, rB, rC; R[rA] := R[rB][R[rC]]
     TBC(u8),                       // mark vA to be close
     CLOSE(u8),                     // close all upvalues >= R[rA]
-    FORPREP(u8, i32),              // rA, Bx; pc += Bx + 1
+    FORPREP(usize, i32),           // rA, Bx; pc += Bx + 1
     TFORPREP(u8, i32),             // rA, Bx; R[rA + 3]; pc += Bx
     TFORCALL(u8, u8), // rA, rC; R[rA+4], ... , R[rA+3+rC] := R[rA](R[rA + 1], R[rA + 2])
-    FORLOOP(u8, i32), // rA, Bx; pc -= Bx
+    FORLOOP(usize, i32), // rA, Bx; pc -= Bx
     TFORLOOP(u8, i32), // rA, Bx; if R[rA+2] ~= nil then { R[rA] = R[rA+2]; pc -= Bx }
-    SETTABUP(u8, u8, u8, bool), // rA, rB, rC, k; U[rA][K[rB]] := RK[rC]
-    SETI(u8, u8, u8, bool), // rA, rB, rC, k; R[rA][rB] := RK[rC]
+    SETTABUP(usize, usize, usize, bool), // rA, rB, rC, k; U[rA][K[rB]] := RK[rC]
+    SETI(usize, i64, usize, bool), // rA, rB, rC, k; R[rA][rB] := RK[rC]
     SETFIELD(usize, usize, usize, bool), // rA, rB, rC, k; R[rA][K[rB]] := RK[rC]
     SETTABLE(usize, usize, usize, bool), // rA, rB, rC, k; R[rA][R[rB]] := RK[rC]
     RETURN(usize, usize), // rA, rB; return R[rA], ... , R[rA+rB-2]
@@ -77,10 +77,10 @@ pub(crate) enum InterCode {
     VARARGPREP(u8),   // adjust vararg parameters
     CALL(usize, usize, usize), // rA, rB, rC; R[rA], ... , R[rA+rC-2] := R[rA](R[rA+1], ... , R[rA+rB-1])
     TAILCALL(usize, usize, usize), // rA, rB, rC; R[rA], ... , R[rA+rC-2] := R[rA](R[rA+1], ... , R[rA+rB-1])
-    NEWTABLE(u8, u8, u8, bool),    // rA; R[rA] = {}
+    NEWTABLE(usize, usize, usize, bool), // rA; R[rA] = {}
     NOP,
-    SETLIST(u8, u8, u8, bool), // rA, rB, rC; R[rA][rC+i] := R[rA+i], 1 <= i <= rB
-    SELF(u8, u8, u8, bool),    // rA, rB, rC; R[rA+1] := R[rB]; R[rA] = R[rB][RK[rC]]
+    SETLIST(usize, usize, usize, bool), // rA, rB, rC; R[rA][rC+i] := R[rA+i], 1 <= i <= rB
+    SELF(usize, usize, usize, bool),    // rA, rB, rC; R[rA+1] := R[rB]; R[rA] = R[rB][RK[rC]]
 }
 
 impl Display for InterCode {
@@ -153,7 +153,7 @@ impl Display for InterCode {
             Self::TFORCALL(ra, rc) => write!(f, "TFORC\t${} #{}", ra, rc),
             Self::FORLOOP(ra, rb) => write!(f, "FORL\t${} #{}", ra, rb),
             Self::TFORLOOP(ra, rb) => write!(f, "TFORL\t${} #{}", ra, rb),
-            Self::SETTABUP(ra, rb, rc, k) => write!(f, "SETTU\t&{} &{} ${} {}", ra, rb, rc, k),
+            Self::SETTABUP(ra, rb, rc, k) => write!(f, "SETTU\t${} ${} &${} {}", ra, rb, rc, k),
             Self::SETI(ra, rb, rc, k) => write!(f, "SETI\t${} #{} &${} {}", ra, rb, rc, k),
             Self::SETFIELD(ra, rb, rc, k) => write!(f, "SETF\t${} &{} &${} {}", ra, rb, rc, k),
             Self::SETTABLE(ra, rb, rc, k) => write!(f, "SETT\t${} ${} &${} {}", ra, rb, rc, k),

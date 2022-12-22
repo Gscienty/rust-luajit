@@ -3,6 +3,7 @@ mod expr;
 mod label;
 mod loc_var;
 mod prototype;
+mod rustfunc;
 mod table;
 mod table_ctor;
 mod upval;
@@ -20,5 +21,6 @@ pub(crate) use upval::*;
 pub(crate) use variable::*;
 pub(crate) use vmcontext::*;
 
+pub use rustfunc::*;
 pub use table::*;
 pub use value::*;

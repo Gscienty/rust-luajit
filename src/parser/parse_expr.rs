@@ -109,10 +109,12 @@ impl<'s> ParseExpr<'s> {
                 self.p.pvar().exp_tonextreg(tc.lexp.clone())?;
                 tc.lexp = Expr::void();
 
-                // flush, setlist
-                self.p.emiter().emit_setlist(treg, tc.na, tc.tostore);
-                tc.na += tc.tostore;
-                tc.tostore = 0;
+                if tc.tostore == 50 {
+                    // flush, setlist
+                    self.p.emiter().emit_setlist(treg, tc.tostore, tc.na);
+                    tc.na += tc.tostore;
+                    tc.tostore = 0;
+                }
             }
             // parse field_exp
             self.field_exp(&mut tc)?;
@@ -129,13 +131,13 @@ impl<'s> ParseExpr<'s> {
         if tc.tostore != 0 {
             if tc.lexp.hasmultret() {
                 self.setreturns(&tc.lexp, 254)?;
-                self.p.emiter().emit_setlist(treg, tc.na, 0);
+                self.p.emiter().emit_setlist(treg, 0, tc.na);
                 tc.na -= 1;
             } else {
                 if !matches!(tc.lexp.value, ExprValue::Void) {
                     self.p.pvar().exp_tonextreg(tc.lexp.clone())?;
                 }
-                self.p.emiter().emit_setlist(treg, tc.na, tc.tostore);
+                self.p.emiter().emit_setlist(treg, tc.tostore, tc.na);
             }
 
             tc.na += tc.tostore;
@@ -1180,15 +1182,19 @@ impl<'s> ParseExpr<'s> {
 
         self.p.emiter().modify_code(pc, |c| {
             *c = match *c {
-                InterCode::NEWTABLE(..) => {
-                    InterCode::NEWTABLE(ra as u8, hsize as u8, asize as u8, false)
-                }
+                InterCode::NEWTABLE(..) => InterCode::NEWTABLE(ra, hsize, asize, false),
                 _ => *c,
             }
         })
     }
 
     fn self_exp(&mut self, texp: Expr, kexp: Expr) -> Result<Expr, ParseErr> {
+        log::debug!(
+            "parse self exp, table exp: {}, key exp: {}",
+            texp.value,
+            kexp.value
+        );
+
         let texp = self.p.pvar().exp_toanyreg(texp)?;
         let treg = self.p.pvar().locreg(&texp)?;
         self.p.pvar().exp_free(&texp)?;

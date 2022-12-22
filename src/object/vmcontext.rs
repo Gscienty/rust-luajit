@@ -3,11 +3,18 @@ use std::{
     rc::Rc,
 };
 
-use super::{Prototype, RefValue, Table};
+use super::{Prototype, RefValue, RustFunc};
 
 #[derive(Clone)]
-pub(crate) enum CallFunc {
+pub enum CallFunc {
     LuaFunc(Prototype),
+    RustFunc(RustFunc),
+}
+
+impl PartialEq for CallFunc {
+    fn eq(&self, _: &Self) -> bool {
+        false
+    }
 }
 
 #[derive(Clone)]
@@ -17,6 +24,7 @@ pub(crate) struct CallInfoContent {
     pub(crate) pc: usize,
     pub(crate) regbase: usize,
 
+    pub(crate) nparams: usize,
     pub(crate) nresults: usize,
 
     pub(crate) func: CallFunc,
@@ -26,16 +34,17 @@ pub(crate) struct CallInfoContent {
 pub(crate) struct CallInfo(Rc<RefCell<CallInfoContent>>);
 
 impl CallInfo {
-    pub(crate) fn new_luacall(regbase: usize, proto: Prototype) -> Self {
+    pub(crate) fn new(regbase: usize, func: CallFunc) -> Self {
         Self(Rc::new(RefCell::new(CallInfoContent {
             prev: None,
 
             pc: 0,
             regbase,
 
+            nparams: 0,
             nresults: 0,
 
-            func: CallFunc::LuaFunc(proto),
+            func,
         })))
     }
 
@@ -55,9 +64,9 @@ pub(crate) struct VMContext {
 }
 
 impl VMContext {
-    pub(crate) fn new(callinfo: CallInfo) -> Self {
+    pub(crate) fn new(callinfo: CallInfo, env: RefValue) -> Self {
         Self {
-            reg: vec![Table::new()],
+            reg: vec![env],
             callinfo,
         }
     }

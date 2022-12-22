@@ -50,9 +50,3 @@ impl Prototype {
         self.0.as_ref().borrow_mut()
     }
 }
-
-impl PartialEq for Prototype {
-    fn eq(&self, _: &Self) -> bool {
-        false
-    }
-}

@@ -1,8 +1,14 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{RefCell, RefMut},
+    ops::DerefMut,
+    rc::Rc,
+};
 
 use crate::{
     errors::LuaError,
-    object::{ConstantPool, Prototype},
+    object::{
+        CallFunc, CallInfo, ConstantPool, Prototype, RefValue, RustFunc, Table, VMContext, Value,
+    },
     parser::Parser,
     vm::{ExecError, VMExec},
 };
@@ -10,13 +16,23 @@ use crate::{
 pub struct LuaState {
     pub(crate) proto: Prototype,
     pub(crate) constant_pool: Rc<RefCell<ConstantPool>>,
+
+    pub(crate) env: RefValue,
+    pub(crate) ctx: Rc<RefCell<VMContext>>,
 }
 
 impl LuaState {
     pub fn new() -> Self {
+        let proto = Prototype::new();
+        let env = Table::new();
+        let callinfo = CallInfo::new(1, CallFunc::LuaFunc(proto.clone()));
+
         Self {
-            proto: Prototype::new(),
+            env: env.clone(),
+            proto,
             constant_pool: Rc::new(RefCell::new(ConstantPool::new())),
+
+            ctx: Rc::new(RefCell::new(VMContext::new(callinfo, env.clone()))),
         }
     }
 
@@ -26,18 +42,67 @@ impl LuaState {
             .or(Err(LuaError::ParseError))
     }
 
-    pub fn exec(&self) -> Result<(), ExecError> {
+    pub fn exec(&mut self) -> Result<(), ExecError> {
         let mut exec = VMExec::new(self);
 
         exec.exec()
+    }
+
+    pub fn register(&mut self, funcname: &str, func: RustFunc) {
+        let key = RefValue::from(funcname);
+        let func = RefValue::from(func);
+
+        match self.env.get_mut().deref_mut() {
+            Value::Table(table) => table.set(key, func),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn get(&self, off: usize) -> RefValue {
+        self.ctx.borrow().get(off)
+    }
+
+    pub fn set(&self, off: usize, value: RefValue) {
+        self.ctx.borrow_mut().set(off, value)
+    }
+
+    pub fn nparams(&self) -> usize {
+        self.ctx.borrow().callinfo.prop().nparams
+    }
+
+    pub(crate) fn get_ctx(&self) -> RefMut<VMContext> {
+        self.ctx.borrow_mut()
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::ops::Deref;
+
     use crate::utils::Logger;
 
     use super::*;
+
+    fn test_print(state: &LuaState) -> Result<(), ExecError> {
+        for i in 0..state.nparams() {
+            if i != 0 {
+                print!(" ");
+            }
+
+            match state.get(i).get().deref() {
+                Value::String(v) => print!("{}", v),
+                Value::Integer(v) => print!("{}", v),
+                Value::Number(v) => print!("{}", v),
+                Value::Boolean(v) => print!("{}", v),
+                Value::Nil => break,
+                _ => {}
+            }
+        }
+
+        println!();
+
+        Ok(())
+    }
 
     #[test]
     fn test_compile() {
@@ -50,17 +115,14 @@ mod tests {
             function add(a, b)
                 return a + b;
             end
-
-            function sub(a, b)
-                return add(a - b, a + b) - a - b;
-            end
-
             local a = 'hello world';
-            local b = 10;
-            if #a == 11 then
-                b = add(b, 2) + 100;
-            else 
-                b = sub(b, 3) + 100;
+
+            if #a ~= 10 then
+                local c = add(10, 5);
+                print(c);
+            else
+                local c = add(7, 1);
+                print(c);
             end
         ",
         );
@@ -75,6 +137,8 @@ mod tests {
                 ci += 1;
             }
         }
+
+        state.register("print", test_print);
 
         _ = state.exec();
     }

@@ -3,7 +3,7 @@ use std::ops::{Deref, DerefMut};
 use crate::{
     code::InterCode,
     lexer::{Lexer, Token},
-    object::{CallFunc, CallInfo, ConstantValue, RefValue, VMContext, Value},
+    object::{CallFunc, CallInfo, ConstantValue, RefValue, Table, Value},
     state::LuaState,
 };
 
@@ -31,34 +31,42 @@ enum VMExecOperator {
 }
 
 pub(crate) struct VMExec<'s> {
-    state: &'s LuaState,
-    ctx: VMContext,
+    state: &'s mut LuaState,
 }
 
 impl<'s> VMExec<'s> {
-    pub(crate) fn new(state: &'s LuaState) -> Self {
-        let callinfo = CallInfo::new_luacall(1, state.proto.clone());
-        Self {
-            state,
-            ctx: VMContext::new(callinfo),
-        }
+    pub(crate) fn new(state: &'s mut LuaState) -> Self {
+        Self { state }
     }
 
     pub(crate) fn exec(&mut self) -> Result<(), ExecError> {
         loop {
-            let func = self.ctx.callinfo.prop().func.clone();
+            let func = self.state.get_ctx().callinfo.prop().func.clone();
 
             match func {
                 CallFunc::LuaFunc(prop) => {
-                    let pc = self.ctx.callinfo.prop().pc;
+                    let pc = self.state.get_ctx().callinfo.prop().pc;
 
                     log::debug!("pre exec pc: {}", pc);
 
                     if let Some(code) = prop.prop().codes.get(pc) {
                         self.exec_code(code)?;
+
+                        if log::Level::Debug <= log::max_level() {
+                            log::debug!("pc: {}", self.state.get_ctx().callinfo.prop().pc);
+                            let mut ridx = 0;
+                            for reg in self.state.get_ctx().reg.iter() {
+                                log::debug!("r#{}, ({})", ridx, reg);
+                                ridx += 1;
+                            }
+                        }
                     } else {
                         break;
                     }
+                }
+                CallFunc::RustFunc(func) => {
+                    func(self.state)?;
+                    self.exec_return0()?;
                 }
             }
         }
@@ -118,97 +126,89 @@ impl<'s> VMExec<'s> {
             InterCode::SETUPVAL(ra, rb) => self.exec_setupval(ra, rb)?,
             InterCode::CLOSURE(ra, rb) => self.exec_closure(ra, rb)?,
             InterCode::SETFIELD(ra, rb, rc, iskey) => self.exec_setfield(ra, rb, rc, iskey)?,
+            InterCode::SETTABLE(ra, rb, rc, iskey) => self.exec_settable(ra, rb, rc, iskey)?,
+            InterCode::SETI(ra, rb, rc, iskey) => self.exec_seti(ra, rb, rc, iskey)?,
+            InterCode::SETTABUP(ra, rb, rc, iskey) => self.exec_settableup(ra, rb, rc, iskey)?,
+            InterCode::SETLIST(ra, rb, rc, extra) => self.exec_setlist(ra, rb, rc, extra)?,
             InterCode::GETFIELD(ra, rb, rc) => self.exec_getfield(ra, rb, rc)?,
+            InterCode::GETTABLE(ra, rb, rc) => self.exec_gettable(ra, rb, rc)?,
+            InterCode::GETI(ra, rb, rc) => self.exec_geti(ra, rb, rc)?,
+            InterCode::GETTABUP(ra, rb, rc) => self.exec_gettableup(ra, rb, rc)?,
+            InterCode::NEWTABLE(ra, rb, rc, _extra) => self.exec_newtable(ra, rb, rc)?,
             InterCode::CALL(ra, rb, rc) => {
-                self.exec_call(ra, rb, rc)?;
-
-                if log::Level::Debug <= log::max_level() {
-                    log::debug!("pc: {}", self.ctx.callinfo.prop().pc);
-                    log::debug!("regbase: {}", self.ctx.callinfo.prop().regbase);
-                    let mut ridx = 0;
-                    for reg in self.ctx.reg.iter() {
-                        log::debug!("r#{}, ({})", ridx, reg);
-                        ridx += 1;
-                    }
-                }
-                return Ok(());
+                self.state.get_ctx().callinfo.prop_mut().pc += 1;
+                return self.exec_call(ra, rb, rc);
             }
-            InterCode::RETURN1(ra) => {
-                self.exec_return1(ra)?;
-            }
+            InterCode::RETURN(ra, rb) => return self.exec_return(ra, rb),
+            InterCode::RETURN1(ra) => return self.exec_return1(ra),
+            InterCode::RETURN0 => return self.exec_return0(),
+            InterCode::SELF(ra, rb, rc, iskey) => self.exec_self(ra, rb, rc, iskey)?,
+            InterCode::FORPREP(ra, rb) => self.exec_forprep(ra, rb)?,
+            InterCode::FORLOOP(ra, rb) => self.exec_forloop(ra, rb)?,
             _ => {}
         }
-        self.ctx.callinfo.prop_mut().pc += 1;
-
-        if log::Level::Debug <= log::max_level() {
-            log::debug!("pc: {}", self.ctx.callinfo.prop().pc);
-            let mut ridx = 0;
-            for reg in self.ctx.reg.iter() {
-                log::debug!("r#{}, ({})", ridx, reg);
-                ridx += 1;
-            }
-        }
+        self.state.get_ctx().callinfo.prop_mut().pc += 1;
 
         Ok(())
     }
 
     fn exec_loadnil(&mut self, ra: usize, rb: usize) {
         for off in 0..rb {
-            self.ctx.set(ra + off, RefValue::new());
+            self.state.set(ra + off, RefValue::new());
         }
     }
 
     fn exec_loadbool(&mut self, ra: usize, value: bool) {
-        self.ctx.set(ra, RefValue::from(value))
+        self.state.set(ra, RefValue::from(value))
     }
 
     fn exec_lfalseskip(&mut self, ra: usize) {
-        self.ctx.set(ra, RefValue::from(false));
-        self.ctx.callinfo.prop_mut().pc += 1;
+        self.state.set(ra, RefValue::from(false));
+        self.state.get_ctx().callinfo.prop_mut().pc += 1;
     }
 
     fn exec_loadk(&mut self, ra: usize, rb: usize) {
-        if let Some(k) = self.state.constant_pool.borrow().get(rb) {
+        if let Some(k) = self.state.constant_pool.as_ref().borrow().get(rb) {
             match k {
-                ConstantValue::Float(v) => self.ctx.set(ra, RefValue::from(*v)),
-                ConstantValue::Integer(v) => self.ctx.set(ra, RefValue::from(*v)),
-                ConstantValue::String(v) => self.ctx.set(ra, RefValue::from(v.as_str())),
-                ConstantValue::Bool(v) => self.ctx.set(ra, RefValue::from(*v)),
-                ConstantValue::Nil => self.ctx.set(ra, RefValue::new()),
+                ConstantValue::Float(v) => self.state.set(ra, RefValue::from(*v)),
+                ConstantValue::Integer(v) => self.state.set(ra, RefValue::from(*v)),
+                ConstantValue::String(v) => self.state.set(ra, RefValue::from(v.as_str())),
+                ConstantValue::Bool(v) => self.state.set(ra, RefValue::from(*v)),
+                ConstantValue::Nil => self.state.set(ra, RefValue::new()),
             }
         } else {
-            self.ctx.set(ra, RefValue::new())
+            self.state.set(ra, RefValue::new())
         }
     }
 
     fn exec_loadint(&mut self, ra: usize, rb: u32) {
-        self.ctx.set(ra, RefValue::from(rb as i64))
+        self.state.set(ra, RefValue::from(rb as i64))
     }
 
     fn exec_loadfloat(&mut self, ra: usize, rb: u32) {
-        self.ctx.set(ra, RefValue::from(rb as f64))
+        self.state.set(ra, RefValue::from(rb as f64))
     }
 
     fn exec_jmp(&mut self, offset: Option<i32>) {
         if let Some(offset) = offset {
             if offset < 0 {
-                self.ctx.callinfo.prop_mut().pc -= offset.abs() as usize;
+                self.state.get_ctx().callinfo.prop_mut().pc -= offset.abs() as usize;
             } else {
-                self.ctx.callinfo.prop_mut().pc += offset.abs() as usize;
+                self.state.get_ctx().callinfo.prop_mut().pc += offset.abs() as usize;
             }
         }
     }
 
     fn exec_move(&mut self, ra: usize, rb: usize) {
-        let value = self.ctx.get(rb);
-        self.ctx.set(ra, value);
+        let value = self.state.get(rb);
+        self.state.set(ra, value);
     }
 
     fn exec_concat(&mut self, ra: usize, rb: usize) {
         let mut value = String::new();
 
         for off in 0..rb {
-            match self.ctx.get(ra + off).get().deref() {
+            match self.state.get(ra + off).get().deref() {
                 Value::String(iv) => value.push_str(iv.as_str()),
                 Value::Boolean(iv) => value.push_str(iv.to_string().as_str()),
                 Value::Number(iv) => value.push_str(iv.to_string().as_str()),
@@ -217,7 +217,7 @@ impl<'s> VMExec<'s> {
             }
         }
 
-        self.ctx.set(ra, RefValue::from(value.as_str()))
+        self.state.set(ra, RefValue::from(value.as_str()))
     }
 
     fn string_tonumeric(&self, a: &str) -> Result<RefValue, ExecError> {
@@ -582,7 +582,7 @@ impl<'s> VMExec<'s> {
     }
 
     fn ktorefvalue(&self, k: usize) -> RefValue {
-        match self.state.constant_pool.borrow().get(k) {
+        match self.state.constant_pool.as_ref().borrow().get(k) {
             Some(ConstantValue::Float(v)) => RefValue::from(*v),
             Some(ConstantValue::Integer(v)) => RefValue::from(*v),
             Some(ConstantValue::Bool(v)) => RefValue::from(*v),
@@ -592,232 +592,232 @@ impl<'s> VMExec<'s> {
     }
 
     fn exec_addi(&mut self, ra: usize, rb: usize, imm: u8) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
+        let a = self.state.get(rb);
         let b = RefValue::from(imm as i64);
 
         let result = self.refvalue_op(VMExecOperator::ADD, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_addk(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
+        let a = self.state.get(rb);
         let b = self.ktorefvalue(rc);
 
         let result = self.refvalue_op(VMExecOperator::ADD, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_add(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
-        let b = self.ctx.get(rc);
+        let a = self.state.get(rb);
+        let b = self.state.get(rc);
 
         let result = self.refvalue_op(VMExecOperator::ADD, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_subk(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
+        let a = self.state.get(rb);
         let b = self.ktorefvalue(rc);
 
         let result = self.refvalue_op(VMExecOperator::SUB, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_sub(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
-        let b = self.ctx.get(rc);
+        let a = self.state.get(rb);
+        let b = self.state.get(rc);
 
         let result = self.refvalue_op(VMExecOperator::SUB, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_mulk(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
+        let a = self.state.get(rb);
         let b = self.ktorefvalue(rc);
 
         let result = self.refvalue_op(VMExecOperator::MUL, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_mul(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
-        let b = self.ctx.get(rc);
+        let a = self.state.get(rb);
+        let b = self.state.get(rc);
 
         let result = self.refvalue_op(VMExecOperator::MUL, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_divk(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
+        let a = self.state.get(rb);
         let b = self.ktorefvalue(rc);
 
         let result = self.refvalue_op(VMExecOperator::DIV, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_div(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
-        let b = self.ctx.get(rc);
+        let a = self.state.get(rb);
+        let b = self.state.get(rc);
 
         let result = self.refvalue_op(VMExecOperator::DIV, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_idivk(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
+        let a = self.state.get(rb);
         let b = self.ktorefvalue(rc);
 
         let result = self.refvalue_op(VMExecOperator::IDIV, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_idiv(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
-        let b = self.ctx.get(rc);
+        let a = self.state.get(rb);
+        let b = self.state.get(rc);
 
         let result = self.refvalue_op(VMExecOperator::IDIV, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_modk(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
+        let a = self.state.get(rb);
         let b = self.ktorefvalue(rc);
 
         let result = self.refvalue_op(VMExecOperator::MOD, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_mod(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
-        let b = self.ctx.get(rc);
+        let a = self.state.get(rb);
+        let b = self.state.get(rc);
 
         let result = self.refvalue_op(VMExecOperator::MOD, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_powk(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
+        let a = self.state.get(rb);
         let b = self.ktorefvalue(rc);
 
         let result = self.refvalue_op(VMExecOperator::POW, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_pow(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
-        let b = self.ctx.get(rc);
+        let a = self.state.get(rb);
+        let b = self.state.get(rc);
 
         let result = self.refvalue_op(VMExecOperator::POW, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_shli(&mut self, ra: usize, rb: usize, imm: u8) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
+        let a = self.state.get(rb);
         let b = RefValue::from(imm as i64);
 
         let result = self.refvalue_op(VMExecOperator::SHL, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_shl(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
-        let b = self.ctx.get(rc);
+        let a = self.state.get(rb);
+        let b = self.state.get(rc);
 
         let result = self.refvalue_op(VMExecOperator::SHL, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_shri(&mut self, ra: usize, rb: usize, imm: u8) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
+        let a = self.state.get(rb);
         let b = RefValue::from(imm as i64);
 
         let result = self.refvalue_op(VMExecOperator::SHR, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_shr(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
-        let b = self.ctx.get(rc);
+        let a = self.state.get(rb);
+        let b = self.state.get(rc);
 
         let result = self.refvalue_op(VMExecOperator::SHR, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_bandk(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
+        let a = self.state.get(rb);
         let b = self.ktorefvalue(rc);
 
         let result = self.refvalue_op(VMExecOperator::BAND, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_band(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
-        let b = self.ctx.get(rc);
+        let a = self.state.get(rb);
+        let b = self.state.get(rc);
 
         let result = self.refvalue_op(VMExecOperator::BAND, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_bork(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
+        let a = self.state.get(rb);
         let b = self.ktorefvalue(rc);
 
         let result = self.refvalue_op(VMExecOperator::BOR, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_bor(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
-        let b = self.ctx.get(rc);
+        let a = self.state.get(rb);
+        let b = self.state.get(rc);
 
         let result = self.refvalue_op(VMExecOperator::BOR, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_bxork(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
+        let a = self.state.get(rb);
         let b = self.ktorefvalue(rc);
 
         let result = self.refvalue_op(VMExecOperator::BXOR, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_bxor(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
-        let a = self.ctx.get(rb);
-        let b = self.ctx.get(rc);
+        let a = self.state.get(rb);
+        let b = self.state.get(rc);
 
         let result = self.refvalue_op(VMExecOperator::BXOR, a, b)?;
-        self.ctx.set(ra, result);
+        self.state.set(ra, result);
         Ok(())
     }
 
     fn exec_eqi(&mut self, ra: usize, rb: u32, k: bool) -> Result<(), ExecError> {
-        let a = self.ctx.get(ra);
+        let a = self.state.get(ra);
         let b = RefValue::from(rb as i64);
         let op = if k {
             VMExecOperator::EQ
@@ -827,13 +827,13 @@ impl<'s> VMExec<'s> {
 
         let result = self.refvalue_op(op, a, b)?;
         if matches!(result.get().deref(), Value::Boolean(false)) {
-            self.ctx.callinfo.prop_mut().pc += 1;
+            self.state.get_ctx().callinfo.prop_mut().pc += 1;
         }
         Ok(())
     }
 
     fn exec_eqk(&mut self, ra: usize, rb: usize, k: bool) -> Result<(), ExecError> {
-        let a = self.ctx.get(ra);
+        let a = self.state.get(ra);
         let b = self.ktorefvalue(rb);
         let op = if k {
             VMExecOperator::EQ
@@ -843,14 +843,14 @@ impl<'s> VMExec<'s> {
 
         let result = self.refvalue_op(op, a, b)?;
         if matches!(result.get().deref(), Value::Boolean(false)) {
-            self.ctx.callinfo.prop_mut().pc += 1;
+            self.state.get_ctx().callinfo.prop_mut().pc += 1;
         }
         Ok(())
     }
 
     fn exec_eq(&mut self, ra: usize, rb: usize, k: bool) -> Result<(), ExecError> {
-        let a = self.ctx.get(ra);
-        let b = self.ctx.get(rb);
+        let a = self.state.get(ra);
+        let b = self.state.get(rb);
         let op = if k {
             VMExecOperator::EQ
         } else {
@@ -859,14 +859,14 @@ impl<'s> VMExec<'s> {
 
         let result = self.refvalue_op(op, a, b)?;
         if matches!(result.get().deref(), Value::Boolean(false)) {
-            self.ctx.callinfo.prop_mut().pc += 1;
+            self.state.get_ctx().callinfo.prop_mut().pc += 1;
         }
         Ok(())
     }
 
     fn exec_lt(&mut self, ra: usize, rb: usize, k: bool) -> Result<(), ExecError> {
-        let a = self.ctx.get(ra);
-        let b = self.ctx.get(rb);
+        let a = self.state.get(ra);
+        let b = self.state.get(rb);
         let op = if k {
             VMExecOperator::LT
         } else {
@@ -875,14 +875,14 @@ impl<'s> VMExec<'s> {
 
         let result = self.refvalue_op(op, a, b)?;
         if matches!(result.get().deref(), Value::Boolean(false)) {
-            self.ctx.callinfo.prop_mut().pc += 1;
+            self.state.get_ctx().callinfo.prop_mut().pc += 1;
         }
         Ok(())
     }
 
     fn exec_le(&mut self, ra: usize, rb: usize, k: bool) -> Result<(), ExecError> {
-        let a = self.ctx.get(ra);
-        let b = self.ctx.get(rb);
+        let a = self.state.get(ra);
+        let b = self.state.get(rb);
         let op = if k {
             VMExecOperator::LE
         } else {
@@ -891,57 +891,57 @@ impl<'s> VMExec<'s> {
 
         let result = self.refvalue_op(op, a, b)?;
         if matches!(result.get().deref(), Value::Boolean(false)) {
-            self.ctx.callinfo.prop_mut().pc += 1;
+            self.state.get_ctx().callinfo.prop_mut().pc += 1;
         }
         Ok(())
     }
 
     fn exec_lti(&mut self, ra: usize, rb: u32, k: bool) -> Result<(), ExecError> {
-        let a = self.ctx.get(ra);
+        let a = self.state.get(ra);
         let b = RefValue::from(rb as i64);
 
         let result = self.refvalue_op(VMExecOperator::LT, a, b)?;
         if matches!(result.get().deref(), Value::Boolean(result) if *result != k) {
-            self.ctx.callinfo.prop_mut().pc += 1;
+            self.state.get_ctx().callinfo.prop_mut().pc += 1;
         }
         Ok(())
     }
 
     fn exec_lei(&mut self, ra: usize, rb: u32, k: bool) -> Result<(), ExecError> {
-        let a = self.ctx.get(ra);
+        let a = self.state.get(ra);
         let b = RefValue::from(rb as i64);
 
         let result = self.refvalue_op(VMExecOperator::LE, a, b)?;
         if matches!(result.get().deref(), Value::Boolean(result) if *result != k) {
-            self.ctx.callinfo.prop_mut().pc += 1;
+            self.state.get_ctx().callinfo.prop_mut().pc += 1;
         }
         Ok(())
     }
 
     fn exec_gti(&mut self, ra: usize, rb: u32, k: bool) -> Result<(), ExecError> {
-        let a = self.ctx.get(ra);
+        let a = self.state.get(ra);
         let b = RefValue::from(rb as i64);
 
         let result = self.refvalue_op(VMExecOperator::GT, a, b)?;
         if matches!(result.get().deref(), Value::Boolean(result) if *result != k) {
-            self.ctx.callinfo.prop_mut().pc += 1;
+            self.state.get_ctx().callinfo.prop_mut().pc += 1;
         }
         Ok(())
     }
 
     fn exec_gei(&mut self, ra: usize, rb: u32, k: bool) -> Result<(), ExecError> {
-        let a = self.ctx.get(ra);
+        let a = self.state.get(ra);
         let b = RefValue::from(rb as i64);
 
         let result = self.refvalue_op(VMExecOperator::GE, a, b)?;
         if matches!(result.get().deref(), Value::Boolean(result) if *result != k) {
-            self.ctx.callinfo.prop_mut().pc += 1;
+            self.state.get_ctx().callinfo.prop_mut().pc += 1;
         }
         Ok(())
     }
 
     fn exec_test(&mut self, ra: usize, k: bool) -> Result<(), ExecError> {
-        let a = self.ctx.get(ra);
+        let a = self.state.get(ra);
 
         let cond = match a.get().deref() {
             Value::Nil if k => true,
@@ -954,14 +954,14 @@ impl<'s> VMExec<'s> {
         };
 
         if cond {
-            self.ctx.callinfo.prop_mut().pc += 1;
+            self.state.get_ctx().callinfo.prop_mut().pc += 1;
         }
 
         Ok(())
     }
 
     fn exec_testset(&mut self, ra: usize, rb: usize, k: bool) -> Result<(), ExecError> {
-        let a = self.ctx.get(ra);
+        let a = self.state.get(ra);
 
         let cond = match a.get().deref() {
             Value::Nil if k => true,
@@ -974,17 +974,17 @@ impl<'s> VMExec<'s> {
         };
 
         if cond {
-            self.ctx.callinfo.prop_mut().pc += 1;
+            self.state.get_ctx().callinfo.prop_mut().pc += 1;
         } else {
-            let value = self.ctx.get(rb);
-            self.ctx.set(ra, value)
+            let value = self.state.get(rb);
+            self.state.set(ra, value)
         }
 
         Ok(())
     }
 
     fn exec_not(&mut self, ra: usize, rb: usize) -> Result<(), ExecError> {
-        let b = self.ctx.get(rb);
+        let b = self.state.get(rb);
 
         let value = match b.get().deref() {
             Value::Nil => RefValue::from(true),
@@ -998,7 +998,7 @@ impl<'s> VMExec<'s> {
             Value::Closure(..) => RefValue::from(false),
         };
 
-        self.ctx.set(ra, value);
+        self.state.set(ra, value);
 
         Ok(())
     }
@@ -1022,16 +1022,16 @@ impl<'s> VMExec<'s> {
     }
 
     fn exec_unm(&mut self, ra: usize, rb: usize) -> Result<(), ExecError> {
-        let b = self.ctx.get(rb);
+        let b = self.state.get(rb);
 
         let value = self.refvalue_unm(b)?;
-        self.ctx.set(ra, value);
+        self.state.set(ra, value);
 
         Ok(())
     }
 
     fn exec_len(&mut self, ra: usize, rb: usize) -> Result<(), ExecError> {
-        let b = self.ctx.get(rb);
+        let b = self.state.get(rb);
 
         let value = match b.get().deref() {
             Value::Nil => RefValue::from(0),
@@ -1043,7 +1043,7 @@ impl<'s> VMExec<'s> {
             Value::Closure(..) => RefValue::from(0),
         };
 
-        self.ctx.set(ra, value);
+        self.state.set(ra, value);
 
         Ok(())
     }
@@ -1067,19 +1067,19 @@ impl<'s> VMExec<'s> {
     }
 
     fn exec_bnot(&mut self, ra: usize, rb: usize) -> Result<(), ExecError> {
-        let b = self.ctx.get(rb);
+        let b = self.state.get(rb);
 
         let value = self.refvalue_bnot(b)?;
-        self.ctx.set(ra, value);
+        self.state.set(ra, value);
         Ok(())
     }
 
     fn exec_getupval(&mut self, ra: usize, rb: usize) -> Result<(), ExecError> {
         if let Some(b) = self.state.proto.prop().upvars.get(rb) {
-            let value = self.ctx.get_abs(b.idx);
-            self.ctx.set(ra, value);
+            let value = self.state.get_ctx().get_abs(b.idx);
+            self.state.set(ra, value);
         } else {
-            self.ctx.set(ra, RefValue::new());
+            self.state.set(ra, RefValue::new());
         }
 
         Ok(())
@@ -1087,8 +1087,8 @@ impl<'s> VMExec<'s> {
 
     fn exec_setupval(&mut self, ra: usize, rb: usize) -> Result<(), ExecError> {
         if let Some(b) = self.state.proto.prop().upvars.get(rb) {
-            let value = self.ctx.get(ra);
-            self.ctx.set_abs(b.idx, value);
+            let value = self.state.get(ra);
+            self.state.get_ctx().set_abs(b.idx, value);
 
             Ok(())
         } else {
@@ -1097,7 +1097,7 @@ impl<'s> VMExec<'s> {
     }
 
     fn exec_closure(&mut self, ra: usize, rb: usize) -> Result<(), ExecError> {
-        let closure = match &self.ctx.callinfo.prop().func {
+        let closure = match &self.state.get_ctx().callinfo.prop().func {
             CallFunc::LuaFunc(proto) => {
                 if let Some(p) = proto.prop().children_proto.get(rb) {
                     RefValue::from(p.clone())
@@ -1105,9 +1105,10 @@ impl<'s> VMExec<'s> {
                     return Err(ExecError::BadOperand);
                 }
             }
+            _ => return Err(ExecError::BadOperand),
         };
 
-        self.ctx.set(ra, closure);
+        self.state.set(ra, closure);
 
         Ok(())
     }
@@ -1123,10 +1124,10 @@ impl<'s> VMExec<'s> {
         let value = if iskey {
             self.ktorefvalue(rc)
         } else {
-            self.ctx.get(rc)
+            self.state.get(rc)
         };
 
-        match self.ctx.get(ra).get_mut().deref_mut() {
+        match self.state.get(ra).get_mut().deref_mut() {
             Value::Table(table) => table.set(key, value),
             _ => return Err(ExecError::BadOperand),
         };
@@ -1134,45 +1135,356 @@ impl<'s> VMExec<'s> {
         Ok(())
     }
 
+    fn exec_settable(
+        &mut self,
+        ra: usize,
+        rb: usize,
+        rc: usize,
+        iskey: bool,
+    ) -> Result<(), ExecError> {
+        let key = self.state.get(rb);
+        let value = if iskey {
+            self.ktorefvalue(rc)
+        } else {
+            self.state.get(rc)
+        };
+
+        match self.state.get(ra).get_mut().deref_mut() {
+            Value::Table(table) => table.set(key, value),
+            _ => return Err(ExecError::BadOperand),
+        };
+
+        Ok(())
+    }
+
+    fn exec_settableup(
+        &mut self,
+        ra: usize,
+        rb: usize,
+        rc: usize,
+        iskey: bool,
+    ) -> Result<(), ExecError> {
+        let key = self.ktorefvalue(rb);
+        let value = if iskey {
+            self.ktorefvalue(rc)
+        } else {
+            self.state.get(rc)
+        };
+
+        if let Some(b) = self.state.proto.prop().upvars.get(ra) {
+            match self.state.get_ctx().get_abs(b.idx).get_mut().deref_mut() {
+                Value::Table(table) => table.set(key, value),
+                _ => return Err(ExecError::BadOperand),
+            }
+
+            Ok(())
+        } else {
+            Err(ExecError::BadOperand)
+        }
+    }
+
+    fn exec_gettableup(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
+        let key = self.ktorefvalue(rc);
+
+        if let Some(b) = self.state.proto.prop().upvars.get(rb) {
+            let value = match self.state.get_ctx().get_abs(b.idx).get_mut().deref_mut() {
+                Value::Table(table) => table.get(key.get()),
+                _ => return Err(ExecError::BadOperand),
+            };
+
+            if let Some(value) = value {
+                self.state.set(ra, value)
+            } else {
+                self.state.set(ra, RefValue::new())
+            }
+
+            Ok(())
+        } else {
+            Err(ExecError::BadOperand)
+        }
+    }
+
+    fn exec_seti(&mut self, ra: usize, rb: i64, rc: usize, iskey: bool) -> Result<(), ExecError> {
+        let key = RefValue::from(rb);
+        let value = if iskey {
+            self.ktorefvalue(rc)
+        } else {
+            self.state.get(rc)
+        };
+
+        match self.state.get(ra).get_mut().deref_mut() {
+            Value::Table(table) => table.set(key, value),
+            _ => return Err(ExecError::BadOperand),
+        };
+        Ok(())
+    }
+
     fn exec_getfield(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
         let key = self.ktorefvalue(rc);
-        let value = match self.ctx.get(rb).get().deref() {
+        let value = match self.state.get(rb).get().deref() {
             Value::Table(table) => table.get(key.get()),
             _ => return Err(ExecError::BadOperand),
         };
 
         if let Some(value) = value {
-            self.ctx.set(ra, value)
+            self.state.set(ra, value)
         } else {
-            self.ctx.set(ra, RefValue::new())
+            self.state.set(ra, RefValue::new())
+        }
+
+        Ok(())
+    }
+
+    fn exec_gettable(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
+        let key = self.state.get(rc);
+        let value = match self.state.get(rb).get().deref() {
+            Value::Table(table) => table.get(key.get()),
+            _ => return Err(ExecError::BadOperand),
+        };
+
+        if let Some(value) = value {
+            self.state.set(ra, value)
+        } else {
+            self.state.set(ra, RefValue::new())
+        }
+
+        Ok(())
+    }
+
+    fn exec_geti(&mut self, ra: usize, rb: usize, rc: i64) -> Result<(), ExecError> {
+        let key = RefValue::from(rc);
+        let value = match self.state.get(rb).get().deref() {
+            Value::Table(table) => table.get(key.get()),
+            _ => return Err(ExecError::BadOperand),
+        };
+
+        if let Some(value) = value {
+            self.state.set(ra, value)
+        } else {
+            self.state.set(ra, RefValue::new())
         }
 
         Ok(())
     }
 
     fn exec_call(&mut self, ra: usize, rb: usize, rc: usize) -> Result<(), ExecError> {
-        let closure = match self.ctx.get(ra).get().deref() {
-            Value::Closure(proto) => proto.clone(),
+        let closure = match self.state.get(ra).get().deref() {
+            Value::Closure(closure) => closure.clone(),
             _ => return Err(ExecError::BadOperand),
         };
 
-        let ci = CallInfo::new_luacall(self.ctx.reg.len() - rb + 1, closure);
-        ci.prop_mut().prev = Some(self.ctx.callinfo.clone());
+        let base = self.state.get_ctx().callinfo.prop().regbase + ra + 1;
+
+        let ci = CallInfo::new(base, closure);
+        ci.prop_mut().nparams = rb - 1;
+        ci.prop_mut().prev = Some(self.state.get_ctx().callinfo.clone());
         ci.prop_mut().nresults = rc - 1;
 
-        self.ctx.callinfo = ci;
+        self.state.get_ctx().callinfo = ci;
 
         Ok(())
     }
 
-    fn exec_return1(&mut self, ra: usize) -> Result<(), ExecError> {
-        let value = self.ctx.get(ra);
-        let regidx = self.ctx.callinfo.prop().regbase - 1;
-        self.ctx.set_abs(regidx, value);
+    fn exec_return(&mut self, ra: usize, rb: usize) -> Result<(), ExecError> {
+        for off in 0..rb {
+            let value = self.state.get(ra + off);
+            let regidx = self.state.get_ctx().callinfo.prop().regbase - 1 + off;
+            self.state.get_ctx().set_abs(regidx, value);
+        }
 
-        let prev = self.ctx.callinfo.prop().prev.clone();
+        self.exec_return0()
+    }
+
+    fn exec_return1(&mut self, ra: usize) -> Result<(), ExecError> {
+        let value = self.state.get(ra);
+        let regidx = self.state.get_ctx().callinfo.prop().regbase - 1;
+        self.state.get_ctx().set_abs(regidx, value);
+
+        self.exec_return0()
+    }
+
+    fn exec_return0(&mut self) -> Result<(), ExecError> {
+        let prev = self.state.get_ctx().callinfo.prop().prev.clone();
         if let Some(prev) = prev {
-            self.ctx.callinfo = prev;
+            self.state.get_ctx().callinfo = prev;
+        }
+        Ok(())
+    }
+
+    fn exec_newtable(&mut self, ra: usize, _rb: usize, _rc: usize) -> Result<(), ExecError> {
+        let value = Table::new();
+        self.state.set(ra, value);
+
+        Ok(())
+    }
+
+    fn exec_setlist(
+        &mut self,
+        ra: usize,
+        rb: usize,
+        rc: usize,
+        _extra: bool,
+    ) -> Result<(), ExecError> {
+        match self.state.get(ra).get_mut().deref_mut() {
+            Value::Table(table) => {
+                for off in 1..(rb + 1) {
+                    let key = RefValue::from((rc + off) as i64);
+                    let value = self.state.get(ra + off);
+
+                    table.set(key, value);
+                }
+            }
+            _ => return Err(ExecError::BadOperand),
+        };
+
+        Ok(())
+    }
+
+    fn exec_self(&mut self, ra: usize, rb: usize, rc: usize, iskey: bool) -> Result<(), ExecError> {
+        let value = self.state.get(rb);
+        self.state.set(ra + 1, value);
+
+        let key = if iskey {
+            self.ktorefvalue(rc)
+        } else {
+            self.state.get(rc)
+        };
+        let value = match self.state.get(rb).get_mut().deref_mut() {
+            Value::Table(table) => table.get(key.get()),
+            _ => return Err(ExecError::BadOperand),
+        };
+        if let Some(value) = value {
+            self.state.set(ra, value);
+        } else {
+            self.state.set(ra, RefValue::new());
+        }
+
+        Ok(())
+    }
+
+    fn exec_forprep(&mut self, ra: usize, rb: i32) -> Result<(), ExecError> {
+        let init = self.state.get(ra);
+        let limit = self.state.get(ra + 1);
+        let step = self.state.get(ra + 2);
+
+        let isnegative = match step.get().deref() {
+            Value::Integer(v) if *v != 0 => *v < 0,
+            Value::Number(v) if *v != 0f64 => *v < 0f64,
+            _ => return Err(ExecError::BadOperand),
+        };
+
+        let exit = match init.get().deref() {
+            Value::Integer(i) => match limit.get().deref() {
+                Value::Integer(l) => {
+                    if isnegative {
+                        *i <= *l
+                    } else {
+                        *i >= *l
+                    }
+                }
+                Value::Number(l) => {
+                    if isnegative {
+                        *i as f64 <= *l
+                    } else {
+                        *i as f64 >= *l
+                    }
+                }
+                _ => return Err(ExecError::BadOperand),
+            },
+            Value::Number(i) => match limit.get().deref() {
+                Value::Integer(l) => {
+                    if isnegative {
+                        *i <= *l as f64
+                    } else {
+                        *i >= *l as f64
+                    }
+                }
+                Value::Number(l) => {
+                    if isnegative {
+                        *i <= *l
+                    } else {
+                        *i >= *l
+                    }
+                }
+                _ => return Err(ExecError::BadOperand),
+            },
+            _ => return Err(ExecError::BadOperand),
+        };
+
+        if exit {
+            self.state.get_ctx().callinfo.prop_mut().pc += rb as usize + 1;
+        } else {
+            self.state.set(ra + 3, init);
+        }
+        Ok(())
+    }
+
+    fn exec_forloop(&mut self, ra: usize, rb: i32) -> Result<(), ExecError> {
+        let key = self.state.get(ra + 3);
+        let limit = self.state.get(ra + 1);
+        let step = self.state.get(ra + 2);
+
+        let isnegative = match step.get().deref() {
+            Value::Integer(v) if *v != 0 => *v < 0,
+            Value::Number(v) if *v != 0f64 => *v < 0f64,
+            _ => return Err(ExecError::BadOperand),
+        };
+
+        let next = match key.get().deref() {
+            Value::Integer(i) => match step.get().deref() {
+                Value::Integer(l) => RefValue::from(*i + *l),
+                Value::Number(l) => RefValue::from(*i as f64 + *l),
+                _ => return Err(ExecError::BadOperand),
+            },
+            Value::Number(i) => match limit.get().deref() {
+                Value::Integer(l) => RefValue::from(*i + *l as f64),
+                Value::Number(l) => RefValue::from(*i + *l),
+                _ => return Err(ExecError::BadOperand),
+            },
+            _ => return Err(ExecError::BadOperand),
+        };
+
+        let exit = match next.get().deref() {
+            Value::Integer(i) => match limit.get().deref() {
+                Value::Integer(l) => {
+                    if isnegative {
+                        *i <= *l
+                    } else {
+                        *i >= *l
+                    }
+                }
+                Value::Number(l) => {
+                    if isnegative {
+                        *i as f64 <= *l
+                    } else {
+                        *i as f64 >= *l
+                    }
+                }
+                _ => return Err(ExecError::BadOperand),
+            },
+            Value::Number(i) => match limit.get().deref() {
+                Value::Integer(l) => {
+                    if isnegative {
+                        *i <= *l as f64
+                    } else {
+                        *i >= *l as f64
+                    }
+                }
+                Value::Number(l) => {
+                    if isnegative {
+                        *i <= *l
+                    } else {
+                        *i >= *l
+                    }
+                }
+                _ => return Err(ExecError::BadOperand),
+            },
+            _ => return Err(ExecError::BadOperand),
+        };
+
+        if !exit {
+            self.state.set(ra + 3, next);
+            self.state.get_ctx().callinfo.prop_mut().pc -= rb as usize;
         }
         Ok(())
     }

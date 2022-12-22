@@ -193,10 +193,10 @@ impl<'s> ParseStmt<'s> {
 
         let base = self.p.fs.prop().freereg;
 
-        self.p.pvar().pushloc(Var::new("(for state)"));
-        self.p.pvar().pushloc(Var::new("(for state)"));
-        self.p.pvar().pushloc(Var::new("(for state)"));
-        self.p.pvar().pushloc(Var::new(name));
+        self.p.pvar().pushloc(Var::new("(for state)")); // init
+        self.p.pvar().pushloc(Var::new("(for state)")); // limit
+        self.p.pvar().pushloc(Var::new("(for state)")); // step
+        self.p.pvar().pushloc(Var::new(name)); // var
 
         // parse `=`
         match_token!(consume: self.p, Token::Operator('='))?;

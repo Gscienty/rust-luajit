@@ -5,7 +5,7 @@ use std::{
     rc::Rc,
 };
 
-use super::{Prototype, Table};
+use super::{CallFunc, Prototype, RustFunc, Table};
 
 #[derive(Clone, PartialEq)]
 pub enum Value {
@@ -14,7 +14,7 @@ pub enum Value {
     Boolean(bool),
     String(String),
     Table(Table),
-    Closure(Prototype),
+    Closure(CallFunc),
 
     Nil,
 }
@@ -145,6 +145,16 @@ impl From<&str> for RefValue {
 
 impl From<Prototype> for RefValue {
     fn from(value: Prototype) -> Self {
-        RefValue(Rc::new(RefCell::new(Value::Closure(value))))
+        RefValue(Rc::new(RefCell::new(Value::Closure(CallFunc::LuaFunc(
+            value,
+        )))))
+    }
+}
+
+impl From<RustFunc> for RefValue {
+    fn from(value: RustFunc) -> Self {
+        RefValue(Rc::new(RefCell::new(Value::Closure(CallFunc::RustFunc(
+            value,
+        )))))
     }
 }
