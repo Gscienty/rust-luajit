@@ -271,11 +271,11 @@ impl<'s> Emiter<'s> {
     }
 
     pub(super) fn emit_tforprep(&mut self, ra: usize) -> usize {
-        self.emit(InterCode::TFORPREP(ra as u8, 0))
+        self.emit(InterCode::TFORPREP(ra, 0))
     }
 
     pub(super) fn emit_tforcall(&mut self, ra: usize, rc: usize) -> usize {
-        self.emit(InterCode::TFORCALL(ra as u8, rc as u8))
+        self.emit(InterCode::TFORCALL(ra, rc))
     }
 
     pub(super) fn emit_forloop(&mut self, ra: usize) -> usize {
@@ -283,7 +283,7 @@ impl<'s> Emiter<'s> {
     }
 
     pub(super) fn emit_tforloop(&mut self, ra: usize) -> usize {
-        self.emit(InterCode::TFORLOOP(ra as u8, 0))
+        self.emit(InterCode::TFORLOOP(ra, 0))
     }
 
     pub(super) fn emit_setupval(&mut self, ra: usize, rb: usize) -> usize {

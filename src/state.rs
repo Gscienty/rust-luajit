@@ -10,7 +10,7 @@ use crate::{
         CallFunc, CallInfo, ConstantPool, Prototype, RefValue, RustFunc, Table, VMContext, Value,
     },
     parser::Parser,
-    vm::{ExecError, VMExec},
+    vm::{self, ExecError, VMExec},
 };
 
 pub struct LuaState {
@@ -24,8 +24,10 @@ pub struct LuaState {
 impl LuaState {
     pub fn new() -> Self {
         let proto = Prototype::new();
-        let env = Table::new();
+        let mut env = Table::new();
         let callinfo = CallInfo::new(1, CallFunc::LuaFunc(proto.clone()));
+
+        vm::register(&mut env);
 
         Self {
             env: env.clone(),
@@ -77,32 +79,10 @@ impl LuaState {
 
 #[cfg(test)]
 mod tests {
-    use std::ops::Deref;
 
     use crate::utils::Logger;
 
     use super::*;
-
-    fn test_print(state: &LuaState) -> Result<(), ExecError> {
-        for i in 0..state.nparams() {
-            if i != 0 {
-                print!(" ");
-            }
-
-            match state.get(i).get().deref() {
-                Value::String(v) => print!("{}", v),
-                Value::Integer(v) => print!("{}", v),
-                Value::Number(v) => print!("{}", v),
-                Value::Boolean(v) => print!("{}", v),
-                Value::Nil => break,
-                _ => {}
-            }
-        }
-
-        println!();
-
-        Ok(())
-    }
 
     #[test]
     fn test_compile() {
@@ -112,17 +92,10 @@ mod tests {
         let mut state = LuaState::new();
         let ret = state.parse(
             "
-            function add(a, b)
-                return a + b;
-            end
-            local a = 'hello world';
+            local table = { 4, 5, 6 };
 
-            if #a ~= 10 then
-                local c = add(10, 5);
-                print(c);
-            else
-                local c = add(7, 1);
-                print(c);
+            for key, value in ipairs(table) do
+                print(key, value)
             end
         ",
         );
@@ -137,8 +110,6 @@ mod tests {
                 ci += 1;
             }
         }
-
-        state.register("print", test_print);
 
         _ = state.exec();
     }

@@ -152,7 +152,7 @@ impl<'s> ParseStmt<'s> {
         nvars: usize,
         isgen: bool,
     ) -> Result<(), ParseErr> {
-        log::debug!("parse forbody_stmt");
+        log::debug!("parse forbody_stmt nvars: {}", nvars);
 
         // parse `do`
         match_token!(consume: self.p, Token::Do)?;
@@ -227,7 +227,7 @@ impl<'s> ParseStmt<'s> {
 
     // forlist_stmt ::= name { `,` name } `in` explist_exp forbody_stmt
     pub(super) fn forlist_stmt(&mut self, name: &str) -> Result<(), ParseErr> {
-        log::debug!("parse forlist_stmt");
+        log::debug!("parse forlist_stmt name: {}", name);
 
         let base = self.p.fs.prop().freereg;
 
@@ -236,8 +236,7 @@ impl<'s> ParseStmt<'s> {
         self.p.pvar().pushloc(Var::new("(for state)"));
         self.p.pvar().pushloc(Var::new("(for state)"));
 
-        self.p.pvar().pushloc(Var::new(name));
-
+        self.p.pvar().pushloc(Var::new(name)); // index
         let mut nvars = 5;
 
         // parse { `,` name }
@@ -248,9 +247,9 @@ impl<'s> ParseStmt<'s> {
         }
         // parse `in`
         match_token!(consume: self.p, Token::In)?;
+
         // parse explist_exp
         let (nexps, exp) = self.p.pexp().exprlist_exp()?;
-
         self.p.pvar().adjust_assign(4, nexps, exp)?;
         self.p.pvar().adjust_localvars(4);
 
@@ -266,8 +265,6 @@ impl<'s> ParseStmt<'s> {
 
     // for_stmt ::= `for` (fornum_stmt | forlist_stmt) `end`
     pub(super) fn for_stmt(&mut self) -> Result<(), ParseErr> {
-        log::debug!("parse for_stmt");
-
         self.p.pfscope().enterblock(true);
 
         // parse `for`
@@ -805,7 +802,11 @@ impl<'s> ParseStmt<'s> {
             Token::Function => self.func_stmt(),
             Token::Return => self.return_stmt(),
             _ => self.expr_stmt(),
-        }
+        }?;
+
+        self.p.fs.prop_mut().freereg = self.p.pvar().instack_nvars();
+
+        Ok(())
     }
 
     pub(super) fn stmtlist(&mut self) -> Result<(), ParseErr> {

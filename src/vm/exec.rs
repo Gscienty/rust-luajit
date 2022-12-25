@@ -51,15 +51,6 @@ impl<'s> VMExec<'s> {
 
                     if let Some(code) = prop.prop().codes.get(pc) {
                         self.exec_code(code)?;
-
-                        if log::Level::Debug <= log::max_level() {
-                            log::debug!("pc: {}", self.state.get_ctx().callinfo.prop().pc);
-                            let mut ridx = 0;
-                            for reg in self.state.get_ctx().reg.iter() {
-                                log::debug!("r#{}, ({})", ridx, reg);
-                                ridx += 1;
-                            }
-                        }
                     } else {
                         break;
                     }
@@ -67,6 +58,15 @@ impl<'s> VMExec<'s> {
                 CallFunc::RustFunc(func) => {
                     func(self.state)?;
                     self.exec_return0()?;
+                }
+            }
+
+            if log::Level::Debug <= log::max_level() {
+                log::debug!("pc: {}", self.state.get_ctx().callinfo.prop().pc);
+                let mut ridx = 0;
+                for reg in self.state.get_ctx().reg.iter() {
+                    log::debug!("r#{}, ({})", ridx, reg);
+                    ridx += 1;
                 }
             }
         }
@@ -145,6 +145,12 @@ impl<'s> VMExec<'s> {
             InterCode::SELF(ra, rb, rc, iskey) => self.exec_self(ra, rb, rc, iskey)?,
             InterCode::FORPREP(ra, rb) => self.exec_forprep(ra, rb)?,
             InterCode::FORLOOP(ra, rb) => self.exec_forloop(ra, rb)?,
+            InterCode::TFORPREP(ra, rb) => self.exec_tforprep(ra, rb)?,
+            InterCode::TFORCALL(ra, rb) => {
+                self.state.get_ctx().callinfo.prop_mut().pc += 1;
+                return self.exec_tforcall(ra, rb);
+            }
+            InterCode::TFORLOOP(ra, rb) => self.exec_tforloop(ra, rb)?,
             _ => {}
         }
         self.state.get_ctx().callinfo.prop_mut().pc += 1;
@@ -1273,7 +1279,7 @@ impl<'s> VMExec<'s> {
             _ => return Err(ExecError::BadOperand),
         };
 
-        let base = self.state.get_ctx().callinfo.prop().regbase + ra + 1;
+        let base = self.state.get_ctx().callinfo.prop().regbase + ra;
 
         let ci = CallInfo::new(base, closure);
         ci.prop_mut().nparams = rb - 1;
@@ -1486,6 +1492,29 @@ impl<'s> VMExec<'s> {
             self.state.set(ra + 3, next);
             self.state.get_ctx().callinfo.prop_mut().pc -= rb as usize;
         }
+        Ok(())
+    }
+
+    fn exec_tforprep(&mut self, _ra: usize, rb: i32) -> Result<(), ExecError> {
+        self.state.get_ctx().callinfo.prop_mut().pc += rb as usize;
+        Ok(())
+    }
+
+    fn exec_tforcall(&mut self, ra: usize, rb: usize) -> Result<(), ExecError> {
+        self.state.set(ra + 3, self.state.get(ra)); // func
+        self.state.set(ra + 4, self.state.get(ra + 1)); // table
+        self.state.set(ra + 5, self.state.get(ra + 2)); // state
+        self.state.set(ra + 6, self.state.get(ra + 3)); // ctrl
+
+        self.exec_call(ra + 3, 4, rb)
+    }
+
+    fn exec_tforloop(&mut self, ra: usize, rb: i32) -> Result<(), ExecError> {
+        if !matches!(self.state.get(ra + 5).get().deref(), Value::Nil) {
+            self.state.set(ra + 2, self.state.get(ra + 4));
+            self.state.get_ctx().callinfo.prop_mut().pc -= rb as usize;
+        }
+
         Ok(())
     }
 }

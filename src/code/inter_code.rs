@@ -62,19 +62,19 @@ pub(crate) enum InterCode {
     TBC(u8),                       // mark vA to be close
     CLOSE(u8),                     // close all upvalues >= R[rA]
     FORPREP(usize, i32),           // rA, Bx; pc += Bx + 1
-    TFORPREP(u8, i32),             // rA, Bx; R[rA + 3]; pc += Bx
-    TFORCALL(u8, u8), // rA, rC; R[rA+4], ... , R[rA+3+rC] := R[rA](R[rA + 1], R[rA + 2])
-    FORLOOP(usize, i32), // rA, Bx; pc -= Bx
-    TFORLOOP(u8, i32), // rA, Bx; if R[rA+2] ~= nil then { R[rA] = R[rA+2]; pc -= Bx }
+    TFORPREP(usize, i32),          // rA, Bx; R[rA + 3]; pc += Bx
+    TFORCALL(usize, usize), // rA, rC; R[rA+4], ... , R[rA+3+rC] := R[rA](R[rA + 1], R[rA + 2])
+    FORLOOP(usize, i32),    // rA, Bx; pc -= Bx
+    TFORLOOP(usize, i32),   // rA, Bx; if R[rA+2] ~= nil then { R[rA] = R[rA+2]; pc -= Bx }
     SETTABUP(usize, usize, usize, bool), // rA, rB, rC, k; U[rA][K[rB]] := RK[rC]
     SETI(usize, i64, usize, bool), // rA, rB, rC, k; R[rA][rB] := RK[rC]
     SETFIELD(usize, usize, usize, bool), // rA, rB, rC, k; R[rA][K[rB]] := RK[rC]
     SETTABLE(usize, usize, usize, bool), // rA, rB, rC, k; R[rA][R[rB]] := RK[rC]
-    RETURN(usize, usize), // rA, rB; return R[rA], ... , R[rA+rB-2]
-    RETURN0,          // ; return
-    RETURN1(usize),   // rA; return R[rA]
-    CLOSURE(usize, usize), // rA, Bx; R[rA] = closure(KPROTO[Bx])
-    VARARGPREP(u8),   // adjust vararg parameters
+    RETURN(usize, usize),   // rA, rB; return R[rA], ... , R[rA+rB-2]
+    RETURN0,                // ; return
+    RETURN1(usize),         // rA; return R[rA]
+    CLOSURE(usize, usize),  // rA, Bx; R[rA] = closure(KPROTO[Bx])
+    VARARGPREP(u8),         // adjust vararg parameters
     CALL(usize, usize, usize), // rA, rB, rC; R[rA], ... , R[rA+rC-2] := R[rA](R[rA+1], ... , R[rA+rB-1])
     TAILCALL(usize, usize, usize), // rA, rB, rC; R[rA], ... , R[rA+rC-2] := R[rA](R[rA+1], ... , R[rA+rB-1])
     NEWTABLE(usize, usize, usize, bool), // rA; R[rA] = {}
