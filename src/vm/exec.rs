@@ -1510,7 +1510,7 @@ impl<'s> VMExec<'s> {
     }
 
     fn exec_tforloop(&mut self, ra: usize, rb: i32) -> Result<(), ExecError> {
-        if !matches!(self.state.get(ra + 5).get().deref(), Value::Nil) {
+        if !matches!(self.state.get(ra + 4).get().deref(), Value::Nil) {
             self.state.set(ra + 2, self.state.get(ra + 4));
             self.state.get_ctx().callinfo.prop_mut().pc -= rb as usize;
         }

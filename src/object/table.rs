@@ -8,36 +8,30 @@ use std::{
 use super::{RefValue, Value};
 
 #[derive(Clone)]
-struct TableNode {
-    key: RefValue,
-    value: RefValue,
-}
-
-#[derive(Clone)]
 pub struct Table {
-    hash_map: BTreeMap<u64, Vec<TableNode>>,
-    array: Vec<RefValue>,
+    index_map: BTreeMap<usize, Vec<usize>>,
+    pairs: Vec<(RefValue, RefValue)>,
 }
 
 impl Table {
     pub fn new() -> RefValue {
         RefValue(Rc::new(RefCell::new(Value::Table(Table {
-            hash_map: BTreeMap::new(),
-            array: Vec::new(),
+            index_map: BTreeMap::new(),
+            pairs: Vec::new(),
         }))))
     }
 
-    fn hash(&self, key: &Value) -> u64 {
+    fn hash(&self, key: &Value) -> usize {
         match key {
-            Value::Integer(value) => *value as u64,
-            Value::Number(value) => *value as u64,
-            Value::Boolean(value) => *value as u64,
+            Value::Integer(value) => *value as usize,
+            Value::Number(value) => *value as usize,
+            Value::Boolean(value) => *value as usize,
             Value::String(value) => {
                 let mut result = 0;
                 let mut offset = 0;
 
                 for chr in value.chars() {
-                    result ^= (chr as u64) << (offset << 3);
+                    result ^= (chr as usize) << (offset << 3);
                     offset = (offset + 1) % 8;
                 }
 
@@ -47,65 +41,72 @@ impl Table {
         }
     }
 
-    fn get_offset(&self, hash_key: u64, key: Ref<Value>) -> usize {
-        if let Some(pairs) = self.hash_map.get(&hash_key) {
-            let mut offset = 0usize;
-            let len = pairs.len();
-
-            loop {
-                if offset == len {
-                    break usize::MAX;
-                }
-
-                if let Some(pair) = pairs.get(offset) {
-                    if pair.key.0.borrow().eq(key.deref()) {
-                        break offset;
+    fn pairs_off(&self, hash_key: usize, key: Ref<Value>) -> Option<usize> {
+        if let Some(indexs) = self.index_map.get(&hash_key) {
+            for off in indexs.iter() {
+                if let Some(pair) = self.pairs.get(*off) {
+                    if pair.0.get().eq(key.deref()) {
+                        return Some(*off);
                     }
                 } else {
-                    break usize::MAX;
+                    return None;
                 }
-
-                offset += 1;
             }
-        } else {
-            usize::MAX
         }
+
+        None
     }
 
     pub fn set(&mut self, key: RefValue, value: RefValue) {
-        if let Value::Integer(index) = key.0.borrow().deref() {
-            if let Some(array_value) = self.array.get_mut(*index as usize) {
-                *array_value = value;
+        let hash_key = self.hash(&key.get());
 
-                return;
+        if !self.index_map.contains_key(&hash_key) {
+            self.index_map.insert(hash_key, Vec::new());
+        }
+        if let Some(off) = self.pairs_off(hash_key, key.get()) {
+            if let Some(pair) = self.pairs.get_mut(off) {
+                *pair = (key, value);
+            } else {
+                unreachable!();
             }
-        }
+        } else {
+            self.pairs.push((key, value));
+            let off = self.pairs.len() - 1;
 
-        let hash_key = self.hash(key.get().deref());
-
-        if !self.hash_map.contains_key(&hash_key) {
-            self.hash_map.insert(hash_key, Vec::new());
-        }
-
-        let offset = self.get_offset(hash_key, key.get());
-
-        if let Some(pairs) = self.hash_map.get_mut(&hash_key) {
-            if offset == usize::MAX {
-                pairs.push(TableNode { key, value })
-            } else if let Some(pair) = pairs.get_mut(offset) {
-                pair.value = value;
+            if let Some(pairs) = self.index_map.get_mut(&hash_key) {
+                pairs.push(off);
             }
-        }
+        };
     }
 
     pub fn get(&self, key: Ref<Value>) -> Option<RefValue> {
         let hash_key = self.hash(key.deref());
-        let offset = self.get_offset(hash_key, key);
+        if let Some(off) = self.pairs_off(hash_key, key) {
+            self.pairs.get(off).and_then(|v| Some(v.1.clone()))
+        } else {
+            None
+        }
+    }
 
-        self.hash_map
-            .get(&hash_key)
-            .and_then(|pairs| pairs.get(offset))
-            .and_then(|pair| Some(pair.value.clone()))
+    pub fn next(&self, key: Ref<Value>) -> Option<(RefValue, RefValue)> {
+        if matches!(key.deref(), Value::Nil) {
+            if let Some(pair) = self.pairs.get(0) {
+                Some(pair.clone())
+            } else {
+                None
+            }
+        } else {
+            let hash_key = self.hash(key.deref());
+            if let Some(off) = self.pairs_off(hash_key, key) {
+                if let Some(pair) = self.pairs.get(off + 1) {
+                    Some(pair.clone())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        }
     }
 }
 

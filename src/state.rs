@@ -92,9 +92,13 @@ mod tests {
         let mut state = LuaState::new();
         let ret = state.parse(
             "
-            local table = { 4, 5, 6 };
+            local table = { 
+                a = 1,
+                b = 2,
+                c = 3,
+            };
 
-            for key, value in ipairs(table) do
+            for key, value in pairs(table) do
                 print(key, value)
             end
         ",
