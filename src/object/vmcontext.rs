@@ -103,4 +103,10 @@ impl VMContext {
 
         self.set_abs(regidx, value)
     }
+
+    pub(crate) fn ret(&mut self, regidx: usize, value: RefValue) {
+        let regidx = self.callinfo.prop().regbase + regidx - 1;
+
+        self.set_abs(regidx, value)
+    }
 }

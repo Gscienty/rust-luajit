@@ -37,6 +37,8 @@ impl<'s> ParseVar<'s> {
     }
 
     fn search_var(&self, fs: &FuncState, name: &str) -> Option<Expr> {
+        log::debug!("search var: {}", name);
+
         let nactvar = fs.prop().nactvar;
         for vidx in (0..nactvar).rev() {
             let loc = self.getloc_aux(fs, vidx);
@@ -190,7 +192,7 @@ impl<'s> ParseVar<'s> {
     pub(super) fn removevars(&mut self, tolevel: usize) {
         let pc = self.p.emiter().pc();
 
-        while self.p.fs.prop().nactvar > tolevel {
+        while self.p.fs.prop().nactvar >= tolevel {
             self.p.fs.prop_mut().nactvar -= 1;
 
             let pidx = match self.p.actvar.pop() {
@@ -308,6 +310,8 @@ impl<'s> ParseVar<'s> {
     }
 
     pub(super) fn pushloc(&mut self, var: Var) -> usize {
+        log::debug!("push loc: {}", var.name);
+
         self.p.actvar.push(var);
 
         self.p.actvar.len() - 1 - self.p.fs.prop().first_local

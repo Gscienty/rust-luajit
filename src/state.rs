@@ -68,6 +68,10 @@ impl LuaState {
         self.ctx.borrow_mut().set(off, value)
     }
 
+    pub fn ret(&self, off: usize, value: RefValue) {
+        self.ctx.borrow_mut().ret(off, value)
+    }
+
     pub fn nparams(&self) -> usize {
         self.ctx.borrow().callinfo.prop().nparams
     }
@@ -97,6 +101,14 @@ mod tests {
                 b = 2,
                 c = 3,
             };
+
+            function swap(t, a, b)
+                local tmp = t[a];
+                t[a] = t[b];
+                t[b] = tmp;
+            end
+
+            swap(table, 'a', 'b')
 
             for key, value in pairs(table) do
                 print(key, value)

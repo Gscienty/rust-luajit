@@ -1279,7 +1279,7 @@ impl<'s> VMExec<'s> {
             _ => return Err(ExecError::BadOperand),
         };
 
-        let base = self.state.get_ctx().callinfo.prop().regbase + ra;
+        let base = self.state.get_ctx().callinfo.prop().regbase + ra + 1;
 
         let ci = CallInfo::new(base, closure);
         ci.prop_mut().nparams = rb - 1;
