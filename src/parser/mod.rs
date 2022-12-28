@@ -1,28 +1,24 @@
 mod binopr;
-mod emit;
-mod errors;
-mod parse;
-mod parse_expr;
-mod parse_func;
-mod parse_lex;
-mod parse_stmt;
-mod parse_var;
 mod unopr;
 
-use binopr::*;
-use emit::*;
-use parse_expr::*;
-use parse_func::*;
-use parse_lex::*;
-use parse_stmt::*;
-use parse_var::*;
-use unopr::*;
+mod ctrlpc;
+mod emit;
+mod exp;
+mod func;
+mod lex;
+mod stmt;
+mod var;
 
 mod block;
-mod func;
+mod fscope;
 
 use block::*;
-use func::*;
+use fscope::*;
 
+mod errors;
+mod parse;
 pub(crate) use errors::*;
 pub(crate) use parse::*;
+
+#[cfg(test)]
+mod stmt_test;

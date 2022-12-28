@@ -98,6 +98,36 @@ impl From<Token> for BinOpr {
     }
 }
 
+impl From<&Token> for BinOpr {
+    fn from(token: &Token) -> Self {
+        match token {
+            Token::Operator('+') => BinOpr::ADD,
+            Token::Operator('-') => BinOpr::SUB,
+            Token::Operator('*') => BinOpr::MUL,
+            Token::Operator('/') => BinOpr::DIV,
+            Token::IDIV => BinOpr::IDIV,
+            Token::Operator('%') => BinOpr::MOD,
+            Token::Operator('^') => BinOpr::POW,
+            Token::Concat => BinOpr::CONCAT,
+            Token::NE => BinOpr::NE,
+            Token::EQ => BinOpr::EQ,
+            Token::LE => BinOpr::LE,
+            Token::Operator('<') => BinOpr::LT,
+            Token::GE => BinOpr::GE,
+            Token::Operator('>') => BinOpr::GT,
+            Token::Operator('&') => BinOpr::BAND,
+            Token::Operator('|') => BinOpr::BOR,
+            Token::And => BinOpr::AND,
+            Token::Or => BinOpr::OR,
+            Token::Operator('~') => BinOpr::BXOR,
+            Token::SHL => BinOpr::SHL,
+            Token::SHR => BinOpr::SHR,
+
+            _ => BinOpr::NoOpr,
+        }
+    }
+}
+
 impl Display for BinOpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

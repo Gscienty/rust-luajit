@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) enum InterCode {
     LOADNIL(usize, usize),         // rA, rB; R[rA], R[rA+1], ... , R[rA+rB] := nil
     LOADTRUE(usize),               // rA; R[rA] := true
@@ -99,7 +99,7 @@ impl Display for InterCode {
                 _ => write!(f, "JMP\t#0"),
             },
             Self::MOVE(ra, rb) => write!(f, "MOVE\t${} ${}", ra, rb),
-            Self::CONCAT(ra, rb) => write!(f, "CONCAT\t${} ${}", ra, rb),
+            Self::CONCAT(ra, rb) => write!(f, "CONCAT\t${} #{}", ra, rb),
             Self::ADDI(ra, rb, rc) => write!(f, "ADDI\t${} ${} #{}", ra, rb, rc),
             Self::ADDK(ra, rb, rc) => write!(f, "ADDK\t${} ${} &{}", ra, rb, rc),
             Self::ADD(ra, rb, rc) => write!(f, "ADD\t${} ${} ${}", ra, rb, rc),

@@ -1,4 +1,6 @@
-use std::fmt::Display;
+use std::{fmt::Display, ops::Deref};
+
+use super::{RefValue, Value};
 
 #[derive(Clone)]
 pub(crate) enum ExprValue {
@@ -19,7 +21,7 @@ pub(crate) enum ExprValue {
     Jump(usize),   // PC, expression is a test / comparsion
     Reloc(usize),  // PC, put result in any register
 
-    Local(usize, usize), // pidx, ridx
+    Local(usize, usize), // proto_idx, reg_idx
 
     Upval(usize), // vidx
 
@@ -50,6 +52,11 @@ impl From<i64> for Expr {
         }
     }
 }
+impl From<&i64> for Expr {
+    fn from(value: &i64) -> Self {
+        Expr::from(*value)
+    }
+}
 
 impl From<f64> for Expr {
     fn from(value: f64) -> Self {
@@ -58,6 +65,12 @@ impl From<f64> for Expr {
             true_jumpto: None,
             false_jumpto: None,
         }
+    }
+}
+
+impl From<&f64> for Expr {
+    fn from(value: &f64) -> Self {
+        Expr::from(*value)
     }
 }
 
@@ -71,12 +84,37 @@ impl From<&str> for Expr {
     }
 }
 
+impl From<&String> for Expr {
+    fn from(value: &String) -> Self {
+        Expr::from(value.as_str())
+    }
+}
+
 impl From<bool> for Expr {
     fn from(value: bool) -> Self {
         Expr {
             value: ExprValue::Bool(value),
             true_jumpto: None,
             false_jumpto: None,
+        }
+    }
+}
+
+impl From<&bool> for Expr {
+    fn from(value: &bool) -> Self {
+        Expr::from(*value)
+    }
+}
+
+impl From<&RefValue> for Expr {
+    fn from(value: &RefValue) -> Self {
+        match value.get().deref() {
+            Value::Nil => Expr::nil(),
+            Value::Integer(v) => Expr::from(v),
+            Value::Number(v) => Expr::from(*v),
+            Value::Boolean(v) => Expr::from(v),
+            Value::String(v) => Expr::from(v),
+            _ => Expr::void(),
         }
     }
 }
@@ -163,8 +201,6 @@ impl Expr {
     }
 
     pub(crate) fn local(vidx: usize, ridx: usize) -> Self {
-        log::debug!("vidx: {}, ridx: {}", vidx, ridx);
-
         Expr {
             value: ExprValue::Local(vidx, ridx),
             true_jumpto: None,

@@ -40,7 +40,6 @@ impl Lexer {
             self.lookahead_token = Token::EOF;
         }
 
-        log::debug!("token next: {}", self.token);
         Ok(())
     }
 
@@ -421,7 +420,6 @@ impl Lexer {
     }
 
     fn number(&mut self) -> Result<Token, ParseErr> {
-        log::debug!("lex number");
         let mut allowable_symbol = true;
         let mut allowable_dot = true;
         let mut allowable_pflag = true;
@@ -474,7 +472,6 @@ impl Lexer {
     }
 
     fn parse_number(&mut self, start_off: usize, default_radix: u32) -> Result<Token, ParseErr> {
-        log::debug!("lex parse number, token_buffer: {}", self.token_buffer);
         if self.token_buffer.eq_ignore_ascii_case("nan") {
             return Ok(Token::Number(f64::NAN));
         }

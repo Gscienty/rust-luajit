@@ -21,7 +21,17 @@ pub(crate) enum VarKind {
 }
 
 impl Var {
-    pub(crate) fn new(name: &str) -> Self {
+    pub(crate) fn new(name: String, kind: VarKind) -> Self {
+        Self {
+            name,
+            kind,
+            val: RefValue::new(),
+            r_idx: 0,
+            p_idx: 0,
+        }
+    }
+
+    pub(crate) fn new_old(name: &str) -> Self {
         Self {
             name: name.to_string(),
             kind: VarKind::REG,

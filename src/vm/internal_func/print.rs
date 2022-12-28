@@ -3,7 +3,7 @@ use std::ops::Deref;
 use crate::{object::Value, state::LuaState, vm::ExecError};
 
 pub(super) fn internal_print(state: &LuaState) -> Result<(), ExecError> {
-    for i in 0..state.nparams()  {
+    for i in 0..state.nparams() {
         if i != 0 {
             print!(" ");
         }

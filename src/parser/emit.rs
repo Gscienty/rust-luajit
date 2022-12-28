@@ -2,19 +2,9 @@ use crate::code::InterCode;
 
 use super::{ParseErr, Parser};
 
-pub(super) struct Emiter<'s> {
-    p: &'s mut Parser,
-}
-
-impl<'s> Emiter<'s> {
-    pub(super) fn new(p: &'s mut Parser) -> Self {
-        Self { p }
-    }
-
+impl Parser {
     fn prevemit(&mut self, code: InterCode) -> Result<usize, ParseErr> {
-        log::debug!("prev emit code: {}", code);
-
-        if let Some(pfs) = self.p.fs.prop().prev.clone() {
+        if let Some(pfs) = self.fs.prop().prev.clone() {
             pfs.prop_mut().proto.prop_mut().codes.push(code);
 
             Ok(pfs.prop().proto.prop().codes.len() - 1)
@@ -24,14 +14,12 @@ impl<'s> Emiter<'s> {
     }
 
     fn emit(&mut self, code: InterCode) -> usize {
-        log::debug!("emit code: {}", code);
-
-        self.p.fs.prop_mut().proto.prop_mut().codes.push(code);
-        self.p.fs.prop().proto.prop().codes.len() - 1
+        self.fs.prop_mut().proto.prop_mut().codes.push(code);
+        self.fs.prop().proto.prop().codes.len() - 1
     }
 
     pub(super) fn pop(&mut self) {
-        self.p.fs.prop_mut().proto.prop_mut().codes.pop();
+        self.fs.prop_mut().proto.prop_mut().codes.pop();
     }
 
     pub(super) fn emit_vararg(&mut self) -> usize {
@@ -79,103 +67,103 @@ impl<'s> Emiter<'s> {
     }
 
     pub(super) fn emit_addi(&mut self, reg: usize, imm: u8) -> usize {
-        self.emit(InterCode::ADDI(255, reg, imm))
+        self.emit(InterCode::ADDI(0, reg, imm))
     }
 
     pub(super) fn emit_addk(&mut self, reg: usize, k: usize) -> usize {
-        self.emit(InterCode::ADDK(255, reg, k))
+        self.emit(InterCode::ADDK(0, reg, k))
     }
 
     pub(super) fn emit_add(&mut self, r1: usize, r2: usize) -> usize {
-        self.emit(InterCode::ADD(255, r1, r2))
+        self.emit(InterCode::ADD(0, r1, r2))
     }
 
     pub(super) fn emit_subk(&mut self, reg: usize, k: usize) -> usize {
-        self.emit(InterCode::SUBK(255, reg, k))
+        self.emit(InterCode::SUBK(0, reg, k))
     }
 
     pub(super) fn emit_sub(&mut self, r1: usize, r2: usize) -> usize {
-        self.emit(InterCode::SUB(255, r1, r2))
+        self.emit(InterCode::SUB(0, r1, r2))
     }
 
     pub(super) fn emit_mulk(&mut self, reg: usize, k: usize) -> usize {
-        self.emit(InterCode::MULK(255, reg, k))
+        self.emit(InterCode::MULK(0, reg, k))
     }
 
     pub(super) fn emit_mul(&mut self, r1: usize, r2: usize) -> usize {
-        self.emit(InterCode::MUL(255, r1, r2))
+        self.emit(InterCode::MUL(0, r1, r2))
     }
 
     pub(super) fn emit_divk(&mut self, reg: usize, k: usize) -> usize {
-        self.emit(InterCode::DIVK(255, reg, k))
+        self.emit(InterCode::DIVK(0, reg, k))
     }
 
     pub(super) fn emit_div(&mut self, r1: usize, r2: usize) -> usize {
-        self.emit(InterCode::DIV(255, r1, r2))
+        self.emit(InterCode::DIV(0, r1, r2))
     }
 
     pub(super) fn emit_idivk(&mut self, reg: usize, k: usize) -> usize {
-        self.emit(InterCode::IDIVK(255, reg, k))
+        self.emit(InterCode::IDIVK(0, reg, k))
     }
 
     pub(super) fn emit_idiv(&mut self, r1: usize, r2: usize) -> usize {
-        self.emit(InterCode::IDIV(255, r1, r2))
+        self.emit(InterCode::IDIV(0, r1, r2))
     }
 
     pub(super) fn emit_modk(&mut self, reg: usize, k: usize) -> usize {
-        self.emit(InterCode::MODK(255, reg, k))
+        self.emit(InterCode::MODK(0, reg, k))
     }
 
     pub(super) fn emit_mod(&mut self, r1: usize, r2: usize) -> usize {
-        self.emit(InterCode::MOD(255, r1, r2))
+        self.emit(InterCode::MOD(0, r1, r2))
     }
 
     pub(super) fn emit_powk(&mut self, reg: usize, k: usize) -> usize {
-        self.emit(InterCode::POWK(255, reg, k))
+        self.emit(InterCode::POWK(0, reg, k))
     }
 
     pub(super) fn emit_pow(&mut self, r1: usize, r2: usize) -> usize {
-        self.emit(InterCode::POW(255, r1, r2))
+        self.emit(InterCode::POW(0, r1, r2))
     }
 
     pub(super) fn emit_shli(&mut self, reg: usize, imm: u8) -> usize {
-        self.emit(InterCode::SHLI(255, reg, imm))
+        self.emit(InterCode::SHLI(0, reg, imm))
     }
 
     pub(super) fn emit_shl(&mut self, r1: usize, r2: usize) -> usize {
-        self.emit(InterCode::SHL(255, r1, r2))
+        self.emit(InterCode::SHL(0, r1, r2))
     }
 
     pub(super) fn emit_shri(&mut self, reg: usize, imm: u8) -> usize {
-        self.emit(InterCode::SHRI(255, reg, imm))
+        self.emit(InterCode::SHRI(0, reg, imm))
     }
 
     pub(super) fn emit_shr(&mut self, r1: usize, r2: usize) -> usize {
-        self.emit(InterCode::SHR(255, r1, r2))
+        self.emit(InterCode::SHR(0, r1, r2))
     }
 
     pub(super) fn emit_band(&mut self, r1: usize, r2: usize) -> usize {
-        self.emit(InterCode::BAND(255, r1, r2))
+        self.emit(InterCode::BAND(0, r1, r2))
     }
 
     pub(super) fn emit_bor(&mut self, r1: usize, r2: usize) -> usize {
-        self.emit(InterCode::BOR(255, r1, r2))
+        self.emit(InterCode::BOR(0, r1, r2))
     }
 
     pub(super) fn emit_bxor(&mut self, r1: usize, r2: usize) -> usize {
-        self.emit(InterCode::BXOR(255, r1, r2))
+        self.emit(InterCode::BXOR(0, r1, r2))
     }
 
     pub(super) fn emit_bandk(&mut self, r1: usize, k: usize) -> usize {
-        self.emit(InterCode::BANDK(255, r1, k))
+        self.emit(InterCode::BANDK(0, r1, k))
     }
 
     pub(super) fn emit_bork(&mut self, r1: usize, k: usize) -> usize {
-        self.emit(InterCode::BORK(255, r1, k))
+        self.emit(InterCode::BORK(0, r1, k))
     }
 
     pub(super) fn emit_bxork(&mut self, r1: usize, k: usize) -> usize {
-        self.emit(InterCode::BXORK(255, r1, k))
+        self.emit(InterCode::BXORK(0, r1, k))
     }
 
     pub(super) fn emit_eqi(&mut self, reg: usize, sb: u32, k: bool) -> usize {
@@ -219,43 +207,43 @@ impl<'s> Emiter<'s> {
     }
 
     pub(super) fn emit_testset(&mut self, rb: usize, k: bool) -> usize {
-        self.emit(InterCode::TESTSET(255, rb, k))
+        self.emit(InterCode::TESTSET(0, rb, k))
     }
 
     pub(super) fn emit_not(&mut self, rb: usize) -> usize {
-        self.emit(InterCode::NOT(255, rb))
+        self.emit(InterCode::NOT(0, rb))
     }
 
     pub(super) fn emit_unm(&mut self, rb: usize) -> usize {
-        self.emit(InterCode::UNM(255, rb))
+        self.emit(InterCode::UNM(0, rb))
     }
 
     pub(super) fn emit_bnot(&mut self, rb: usize) -> usize {
-        self.emit(InterCode::BNOT(255, rb))
+        self.emit(InterCode::BNOT(0, rb))
     }
 
     pub(super) fn emit_len(&mut self, rb: usize) -> usize {
-        self.emit(InterCode::LEN(255, rb))
+        self.emit(InterCode::LEN(0, rb))
     }
 
     pub(super) fn emit_getupval(&mut self, rb: usize) -> usize {
-        self.emit(InterCode::GETUPVAL(255, rb))
+        self.emit(InterCode::GETUPVAL(0, rb))
     }
 
     pub(super) fn emit_gettabup(&mut self, rb: usize, rc: usize) -> usize {
-        self.emit(InterCode::GETTABUP(255, rb, rc))
+        self.emit(InterCode::GETTABUP(0, rb, rc))
     }
 
     pub(super) fn emit_geti(&mut self, rb: usize, rc: i64) -> usize {
-        self.emit(InterCode::GETI(255, rb, rc))
+        self.emit(InterCode::GETI(0, rb, rc))
     }
 
     pub(super) fn emit_getfield(&mut self, rb: usize, rc: usize) -> usize {
-        self.emit(InterCode::GETFIELD(255, rb, rc))
+        self.emit(InterCode::GETFIELD(0, rb, rc))
     }
 
     pub(super) fn emit_gettable(&mut self, rb: usize, rc: usize) -> usize {
-        self.emit(InterCode::GETTABLE(255, rb, rc))
+        self.emit(InterCode::GETTABLE(0, rb, rc))
     }
 
     pub(super) fn emit_tbc(&mut self, ra: usize) -> usize {
@@ -323,7 +311,7 @@ impl<'s> Emiter<'s> {
     }
 
     pub(super) fn emit_newtable(&mut self) -> usize {
-        self.emit(InterCode::NEWTABLE(255, 255, 255, false))
+        self.emit(InterCode::NEWTABLE(0, 0, 0, false))
     }
 
     pub(super) fn emit_setlist(&mut self, ra: usize, rb: usize, rc: usize) -> usize {
@@ -339,12 +327,10 @@ impl<'s> Emiter<'s> {
     }
 
     pub(super) fn emit_closure(&mut self, rb: usize) -> Result<usize, ParseErr> {
-        self.prevemit(InterCode::CLOSURE(255, rb))
+        self.prevemit(InterCode::CLOSURE(0, rb))
     }
 
     pub(super) fn set_ra(&mut self, pc: usize, ra: usize) {
-        log::debug!("set ra, pc: {}", pc);
-
         self.modify_code(pc, |c| {
             *c = match *c {
                 InterCode::CONCAT(_, rb) => InterCode::CONCAT(ra, rb),
@@ -387,8 +373,6 @@ impl<'s> Emiter<'s> {
                 InterCode::CLOSURE(_, rb) => InterCode::CLOSURE(ra, rb),
                 _ => *c,
             };
-
-            log::debug!("set ra: {}", *c);
         });
     }
 
@@ -398,8 +382,6 @@ impl<'s> Emiter<'s> {
                 InterCode::CONCAT(ra, _) => InterCode::CONCAT(ra, rb),
                 _ => *c,
             };
-
-            log::debug!("set rb: {}", *c);
         })
     }
 
@@ -422,8 +404,6 @@ impl<'s> Emiter<'s> {
                 InterCode::CALL(ra, rb, _) => InterCode::CALL(ra, rb, rc),
                 _ => *c,
             };
-
-            log::debug!("set rc: {}", *c);
         })
     }
 
@@ -433,8 +413,6 @@ impl<'s> Emiter<'s> {
                 InterCode::JMP(_) => InterCode::JMP(Some(sj as i32)),
                 _ => *c,
             };
-
-            log::debug!("set sj: {}", *c);
         })
     }
 
@@ -453,8 +431,6 @@ impl<'s> Emiter<'s> {
                 InterCode::GEI(ra, rb, k) => InterCode::GEI(ra, rb, !k),
                 _ => *c,
             };
-
-            log::debug!("negate cond: {}", *c);
         });
     }
 
@@ -462,25 +438,24 @@ impl<'s> Emiter<'s> {
     where
         F: FnOnce(&mut InterCode),
     {
-        if let Some(code) = self.p.fs.prop_mut().proto.prop_mut().codes.get_mut(pc) {
+        if let Some(code) = self.fs.prop_mut().proto.prop_mut().codes.get_mut(pc) {
             f(code)
         }
     }
 
     pub(super) fn pc(&self) -> usize {
-        self.p.fs.prop().proto.prop().codes.len()
+        self.fs.prop().proto.prop().codes.len()
     }
 
     pub(super) fn mark_pc(&mut self) -> usize {
         let pc = self.pc();
-        self.p.last_target = pc;
+        self.last_target = pc;
 
         pc
     }
 
     pub(super) fn get_code(&self, pc: usize) -> Option<InterCode> {
-        self.p
-            .fs
+        self.fs
             .prop()
             .proto
             .prop()

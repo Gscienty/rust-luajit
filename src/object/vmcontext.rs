@@ -79,29 +79,27 @@ impl VMContext {
         }
     }
 
-    pub(crate) fn set_abs(&mut self, regidx: usize, value: RefValue) {
-        if let Some(stored) = self.reg.get_mut(regidx) {
-            *stored = value;
-        } else if self.reg.len() == 0 {
-            self.reg.push(value);
+    pub(crate) fn set_abs(&mut self, index: usize, value: RefValue) {
+        if let Some(store) = self.reg.get_mut(index) {
+            *store = value
         } else {
-            while regidx < self.reg.len() - 1 {
+            while self.reg.len() < index {
                 self.reg.push(RefValue::new());
             }
             self.reg.push(value);
         }
     }
 
-    pub(crate) fn get(&self, regidx: usize) -> RefValue {
-        let regidx = self.callinfo.prop().regbase + regidx;
+    pub(crate) fn get(&self, index: usize) -> RefValue {
+        let index = self.callinfo.prop().regbase + index;
 
-        self.get_abs(regidx)
+        self.get_abs(index)
     }
 
-    pub(crate) fn set(&mut self, regidx: usize, value: RefValue) {
-        let regidx = self.callinfo.prop().regbase + regidx;
+    pub(crate) fn set(&mut self, index: usize, value: RefValue) {
+        let index = self.callinfo.prop().regbase + index;
 
-        self.set_abs(regidx, value)
+        self.set_abs(index, value)
     }
 
     pub(crate) fn ret(&mut self, regidx: usize, value: RefValue) {

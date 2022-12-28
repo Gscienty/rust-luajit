@@ -96,11 +96,7 @@ mod tests {
         let mut state = LuaState::new();
         let ret = state.parse(
             "
-            local table = { 
-                a = 1,
-                b = 2,
-                c = 3,
-            };
+            local table = { 4, 5, 6 };
 
             function swap(t, a, b)
                 local tmp = t[a];
@@ -108,11 +104,16 @@ mod tests {
                 t[b] = tmp;
             end
 
-            swap(table, 'a', 'b')
+            swap(table, 1, 2);
 
+            local sum = 0;
             for key, value in pairs(table) do
                 print(key, value)
+
+                sum = sum + key + value;
             end
+
+            print(sum);
         ",
         );
 

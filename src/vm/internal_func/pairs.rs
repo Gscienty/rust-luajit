@@ -12,11 +12,11 @@ fn internal_ipairs_aux(state: &LuaState) -> Result<(), ExecError> {
             let key = RefValue::from(*off + 1);
 
             if let Some(value) = table.get(key.get()) {
-                state.ret(1, key);
-                state.ret(2, value);
+                state.ret(0, key);
+                state.ret(1, value);
             } else {
+                state.ret(0, RefValue::new());
                 state.ret(1, RefValue::new());
-                state.ret(2, RefValue::new());
             }
 
             Ok(())
@@ -39,11 +39,11 @@ fn internal_pairs_aux(state: &LuaState) -> Result<(), ExecError> {
     if let Value::Table(table) = state.get(0).get().deref() {
         let key = state.get(1);
         if let Some((key, value)) = table.next(key.get()) {
-            state.ret(1, key);
-            state.ret(2, value);
+            state.ret(0, key);
+            state.ret(1, value);
         } else {
+            state.ret(0, RefValue::new());
             state.ret(1, RefValue::new());
-            state.ret(2, RefValue::new());
         }
 
         Ok(())

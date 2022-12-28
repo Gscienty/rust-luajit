@@ -47,8 +47,6 @@ impl<'s> VMExec<'s> {
                 CallFunc::LuaFunc(prop) => {
                     let pc = self.state.get_ctx().callinfo.prop().pc;
 
-                    log::debug!("pre exec pc: {}", pc);
-
                     if let Some(code) = prop.prop().codes.get(pc) {
                         self.exec_code(code)?;
                     } else {
@@ -60,22 +58,11 @@ impl<'s> VMExec<'s> {
                     self.exec_return0()?;
                 }
             }
-
-            if log::Level::Debug <= log::max_level() {
-                log::debug!("pc: {}", self.state.get_ctx().callinfo.prop().pc);
-                let mut ridx = 0;
-                for reg in self.state.get_ctx().reg.iter() {
-                    log::debug!("r#{}, ({})", ridx, reg);
-                    ridx += 1;
-                }
-            }
         }
         Ok(())
     }
 
     pub(crate) fn exec_code(&mut self, code: &InterCode) -> Result<(), ExecError> {
-        log::debug!("exec code: {}", code);
-
         match *code {
             InterCode::LOADNIL(ra, rb) => self.exec_loadnil(ra, rb),
             InterCode::LOADTRUE(ra) => self.exec_loadbool(ra, true),
@@ -832,7 +819,7 @@ impl<'s> VMExec<'s> {
         };
 
         let result = self.refvalue_op(op, a, b)?;
-        if matches!(result.get().deref(), Value::Boolean(false)) {
+        if matches!(result.get().deref(), Value::Boolean(true)) {
             self.state.get_ctx().callinfo.prop_mut().pc += 1;
         }
         Ok(())
@@ -848,7 +835,7 @@ impl<'s> VMExec<'s> {
         };
 
         let result = self.refvalue_op(op, a, b)?;
-        if matches!(result.get().deref(), Value::Boolean(false)) {
+        if matches!(result.get().deref(), Value::Boolean(true)) {
             self.state.get_ctx().callinfo.prop_mut().pc += 1;
         }
         Ok(())
@@ -864,7 +851,7 @@ impl<'s> VMExec<'s> {
         };
 
         let result = self.refvalue_op(op, a, b)?;
-        if matches!(result.get().deref(), Value::Boolean(false)) {
+        if matches!(result.get().deref(), Value::Boolean(true)) {
             self.state.get_ctx().callinfo.prop_mut().pc += 1;
         }
         Ok(())
@@ -880,7 +867,7 @@ impl<'s> VMExec<'s> {
         };
 
         let result = self.refvalue_op(op, a, b)?;
-        if matches!(result.get().deref(), Value::Boolean(false)) {
+        if matches!(result.get().deref(), Value::Boolean(true)) {
             self.state.get_ctx().callinfo.prop_mut().pc += 1;
         }
         Ok(())
@@ -896,7 +883,7 @@ impl<'s> VMExec<'s> {
         };
 
         let result = self.refvalue_op(op, a, b)?;
-        if matches!(result.get().deref(), Value::Boolean(false)) {
+        if matches!(result.get().deref(), Value::Boolean(true)) {
             self.state.get_ctx().callinfo.prop_mut().pc += 1;
         }
         Ok(())
@@ -1501,12 +1488,11 @@ impl<'s> VMExec<'s> {
     }
 
     fn exec_tforcall(&mut self, ra: usize, rb: usize) -> Result<(), ExecError> {
-        self.state.set(ra + 3, self.state.get(ra)); // func
-        self.state.set(ra + 4, self.state.get(ra + 1)); // table
-        self.state.set(ra + 5, self.state.get(ra + 2)); // state
-        self.state.set(ra + 6, self.state.get(ra + 3)); // ctrl
+        self.state.set(ra + 4, self.state.get(ra)); // table
+        self.state.set(ra + 5, self.state.get(ra + 1)); // state
+        self.state.set(ra + 6, self.state.get(ra + 2)); // ctrl
 
-        self.exec_call(ra + 3, 4, rb)
+        self.exec_call(ra + 4, 3, rb)
     }
 
     fn exec_tforloop(&mut self, ra: usize, rb: i32) -> Result<(), ExecError> {
